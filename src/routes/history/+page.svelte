@@ -1,9 +1,10 @@
 <script>
   import { onMount } from 'svelte';
-  import { getServicesByDateRange, getPurchasesByDateRange } from '$lib/db.js';
+  import { getServicesByDateRange, getPurchasesByDateRange, updateService, deleteService } from '$lib/db.js';
   import { exportToExcel } from '$lib/excel.js';
   import {
     formatDate, formatDateDisplay, formatCurrency, formatPercent,
+    formatAmountInput, parseAmount,
     getThisMonthRange, getThisWeekRange, getLastMonthRange
   } from '$lib/utils.js';
 
@@ -15,6 +16,8 @@
     { key: 'custom', label: '직접선택' },
   ];
 
+  const PAYMENT_METHODS = ['현금', '카드', '계좌이체'];
+
   let selectedPeriod = $state('month');
   let startDate = $state('');
   let endDate = $state('');
@@ -23,6 +26,20 @@
 
   let services = $state([]);
   let purchases = $state([]);
+
+  // 수정 모달
+  let showModal = $state(false);
+  let editingRecord = $state(null);
+  let formDate = $state('');
+  let formTime = $state('');
+  let formPaymentMethod = $state('카드');
+  let formAmountStr = $state('');
+  let formPartsCostStr = $state('');
+  let formMemo = $state('');
+  let formSaving = $state(false);
+
+  // 토스트
+  let toast = $state({ show: false, message: '', type: 'success' });
 
   // 일별 집계
   let dailySummaries = $derived.by(() => {
@@ -95,7 +112,6 @@
         break;
       }
       case 'custom':
-        // 날짜 선택은 별도 input으로
         break;
     }
 
@@ -131,6 +147,80 @@
     } finally {
       exporting = false;
     }
+  }
+
+  // ─── 수정/삭제 ───
+
+  function openEditModal(record) {
+    editingRecord = record;
+    formDate = record.date;
+    formTime = record.time || '';
+    formPaymentMethod = record.paymentMethod || '카드';
+    formAmountStr = record.amount > 0 ? record.amount.toLocaleString('ko-KR') : '';
+    formPartsCostStr = record.partsCost > 0 ? record.partsCost.toLocaleString('ko-KR') : '';
+    formMemo = record.memo || '';
+    showModal = true;
+  }
+
+  function closeModal() {
+    showModal = false;
+    editingRecord = null;
+  }
+
+  function onAmountInput(e) {
+    formAmountStr = formatAmountInput(e.target.value);
+  }
+
+  function onPartsCostInput(e) {
+    formPartsCostStr = formatAmountInput(e.target.value);
+  }
+
+  async function handleSave() {
+    const amount = parseAmount(formAmountStr);
+    if (amount <= 0) {
+      showToast('매출액을 입력해주세요', 'error');
+      return;
+    }
+
+    formSaving = true;
+    try {
+      await updateService({
+        ...editingRecord,
+        date: formDate,
+        time: formTime,
+        paymentMethod: formPaymentMethod,
+        amount,
+        partsCost: parseAmount(formPartsCostStr) || 0,
+        memo: formMemo.trim() || ''
+      });
+
+      showToast('수정 완료');
+      closeModal();
+      await loadData();
+    } catch {
+      showToast('수정에 실패했습니다', 'error');
+    } finally {
+      formSaving = false;
+    }
+  }
+
+  async function handleDelete() {
+    if (!editingRecord) return;
+    if (!confirm(`${formatCurrency(editingRecord.amount)} (${editingRecord.time || '--:--'})\n이 기록을 삭제하시겠습니까?`)) return;
+
+    try {
+      await deleteService(editingRecord.id);
+      showToast('삭제 완료');
+      closeModal();
+      await loadData();
+    } catch {
+      showToast('삭제에 실패했습니다', 'error');
+    }
+  }
+
+  function showToast(message, type = 'success') {
+    toast = { show: true, message, type };
+    setTimeout(() => { toast = { ...toast, show: false }; }, 2000);
   }
 </script>
 
@@ -203,12 +293,13 @@
           {#if expandedDate === day.date}
             <div class="daily-detail">
               {#each day.services as s}
-                <div class="detail-row">
+                <button class="detail-row detail-row-btn" onclick={() => openEditModal(s)}>
                   <span class="detail-time">{s.time || '--:--'}</span>
                   <span class="detail-method">{s.paymentMethod}</span>
                   <span class="detail-memo">{s.memo || ''}</span>
                   <span class="detail-amount font-mono">{formatCurrency(s.amount)}</span>
-                </div>
+                  <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
               {/each}
               {#if day.purchase > 0}
                 <div class="detail-row purchase-row">
@@ -216,6 +307,7 @@
                   <span></span>
                   <span></span>
                   <span class="detail-amount font-mono text-negative">-{formatCurrency(day.purchase)}</span>
+                  <span></span>
                 </div>
               {/if}
             </div>
@@ -250,6 +342,105 @@
       </div>
     </footer>
   {/if}
+</div>
+
+<!-- 매출 수정 모달 -->
+{#if showModal}
+  <div class="overlay" onclick={closeModal} role="presentation">
+    <div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && closeModal()} role="dialog" aria-label="매출 수정" tabindex="-1">
+      <div class="modal-header">
+        <h2>매출 수정</h2>
+        <div class="modal-actions">
+          <button class="btn btn-danger btn-sm" onclick={handleDelete}>삭제</button>
+          <button class="btn-icon" onclick={closeModal} aria-label="닫기">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <form class="modal-body" onsubmit={(e) => { e.preventDefault(); handleSave(); }}>
+        <div class="row-2">
+          <div class="input-group">
+            <label for="edit-date">날짜</label>
+            <input id="edit-date" type="date" class="input-field" bind:value={formDate} />
+          </div>
+          <div class="input-group">
+            <label for="edit-time">시간</label>
+            <input id="edit-time" type="time" class="input-field" bind:value={formTime} />
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-amount">매출액</label>
+          <div class="input-with-unit">
+            <input
+              id="edit-amount"
+              type="text"
+              inputmode="numeric"
+              class="input-field input-amount"
+              placeholder="0"
+              value={formAmountStr}
+              oninput={onAmountInput}
+              autocomplete="off"
+            />
+            <span class="input-unit">원</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-parts">부품비</label>
+          <div class="input-with-unit">
+            <input
+              id="edit-parts"
+              type="text"
+              inputmode="numeric"
+              class="input-field input-amount"
+              placeholder="0"
+              value={formPartsCostStr}
+              oninput={onPartsCostInput}
+              autocomplete="off"
+            />
+            <span class="input-unit">원</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label id="edit-payment-label">결제수단</label>
+          <div class="chip-group" role="radiogroup" aria-labelledby="edit-payment-label">
+            {#each PAYMENT_METHODS as method}
+              <button
+                type="button"
+                class="chip"
+                class:active={formPaymentMethod === method}
+                onclick={() => formPaymentMethod = method}
+              >
+                {method}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="edit-memo">메모</label>
+          <input
+            id="edit-memo"
+            type="text"
+            class="input-field"
+            placeholder="메모"
+            bind:value={formMemo}
+            autocomplete="off"
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-block" disabled={formSaving}>
+          {formSaving ? '저장 중...' : '수정 저장'}
+        </button>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<div class="toast" class:show={toast.show} class:success={toast.type === 'success'} class:error={toast.type === 'error'}>
+  {toast.message}
 </div>
 
 <style>
@@ -378,7 +569,7 @@
     padding: 0 0 var(--space-4) var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-1);
     animation: slide-in var(--duration-fast) var(--ease-out);
   }
 
@@ -389,12 +580,36 @@
 
   .detail-row {
     display: grid;
-    grid-template-columns: 48px 56px 1fr auto;
+    grid-template-columns: 48px 56px 1fr auto 20px;
     gap: var(--space-2);
     align-items: center;
     font-size: var(--text-xs);
     color: var(--text-secondary);
-    padding: var(--space-1) 0;
+    padding: var(--space-2) var(--space-1);
+  }
+
+  .detail-row-btn {
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .detail-row-btn:hover {
+    background: var(--bg-hover);
+  }
+  .detail-row-btn:active {
+    background: var(--bg-active);
+  }
+
+  .detail-edit-icon {
+    color: var(--text-tertiary);
+    opacity: 0.5;
+  }
+  .detail-row-btn:hover .detail-edit-icon {
+    opacity: 1;
   }
 
   .detail-time {
@@ -423,6 +638,61 @@
     border-top: 1px dashed var(--border-subtle);
     padding-top: var(--space-2);
     margin-top: var(--space-1);
+  }
+
+  /* 모달 */
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-5);
+    border-bottom: 1px solid var(--border-subtle);
+    position: sticky;
+    top: 0;
+    background: var(--bg-raised);
+    z-index: 1;
+  }
+  .modal-header h2 {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+  }
+  .modal-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .btn-sm {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+  .row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+  .input-with-unit {
+    position: relative;
+  }
+  .input-unit {
+    position: absolute;
+    right: var(--space-4);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    pointer-events: none;
+  }
+  .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
   }
 
   /* 하단 요약 */
@@ -475,5 +745,6 @@
     50% { opacity: 1; transform: scale(1); }
   }
 
-  input[type="date"] { color-scheme: dark; }
+  input[type="date"],
+  input[type="time"] { color-scheme: dark; }
 </style>

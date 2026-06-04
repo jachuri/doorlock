@@ -202,7 +202,12 @@
 
     <!-- 최근 기록 -->
     <section class="section" aria-label="최근 기록">
-      <h2 class="section-title">최근 기록</h2>
+      <div class="section-title-row">
+        <h2 class="section-title">최근 기록</h2>
+        {#if recentServices.length > 0}
+          <a href="/history" class="link-more">전체보기 · 수정/삭제</a>
+        {/if}
+      </div>
 
       {#if recentServices.length === 0}
         <div class="empty-state">
@@ -345,6 +350,16 @@
 
   .positive { color: var(--positive); }
   .negative { color: var(--negative); }
+
+  .link-more {
+    font-size: var(--text-xs);
+    color: var(--accent-text);
+    text-decoration: none;
+    font-weight: var(--weight-medium);
+  }
+  .link-more:hover {
+    text-decoration: underline;
+  }
 
   /* 기록 리스트 */
   .record-list {
