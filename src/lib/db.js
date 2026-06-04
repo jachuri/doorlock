@@ -1,231 +1,122 @@
-import { openDB } from 'idb';
-
-const DB_NAME = 'DoorlockDB';
-const DB_VERSION = 1;
-
-/** @type {import('idb').IDBPDatabase | null} */
-let dbInstance = null;
-
 /**
- * IndexedDB 초기화 및 인스턴스 반환
- * @returns {Promise<import('idb').IDBPDatabase>}
+ * 도어락 장부 — 데이터 서비스 (Vercel Postgres)
+ *
+ * 함수 시그니처는 기존 IndexedDB 버전과 동일.
+ * 내부적으로 서버 API를 호출하여 Postgres에 읽기/쓰기.
  */
-export async function getDB() {
-  if (dbInstance) return dbInstance;
 
-  dbInstance = await openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      // 매출(서비스) 기록
-      if (!db.objectStoreNames.contains('services')) {
-        const serviceStore = db.createObjectStore('services', {
-          keyPath: 'id',
-          autoIncrement: true
-        });
-        serviceStore.createIndex('date', 'date');
-        serviceStore.createIndex('paymentMethod', 'paymentMethod');
-      }
+// ─── 매출(서비스) ───
 
-      // 매입 기록
-      if (!db.objectStoreNames.contains('purchases')) {
-        const purchaseStore = db.createObjectStore('purchases', {
-          keyPath: 'id',
-          autoIncrement: true
-        });
-        purchaseStore.createIndex('date', 'date');
-        purchaseStore.createIndex('supplier', 'supplier');
-      }
-
-      // 설정값
-      if (!db.objectStoreNames.contains('settings')) {
-        db.createObjectStore('settings', { keyPath: 'key' });
-      }
-    }
-  });
-
-  return dbInstance;
-}
-
-// ─── 매출(서비스) CRUD ───
-
-/**
- * 매출 기록 저장
- * @param {{ date: string, time: string, paymentMethod: string, amount: number, partsCost: number, memo: string }} record
- * @returns {Promise<number>} 생성된 ID
- */
-export async function addService(record) {
-  const db = await getDB();
-  return db.add('services', {
-    ...record,
-    createdAt: new Date().toISOString()
-  });
-}
-
-/**
- * 매출 기록 수정
- * @param {object} record - id 포함된 전체 레코드
- */
-export async function updateService(record) {
-  const db = await getDB();
-  return db.put('services', record);
-}
-
-/**
- * 매출 기록 삭제
- * @param {number} id
- */
-export async function deleteService(id) {
-  const db = await getDB();
-  return db.delete('services', id);
-}
-
-/**
- * 특정 날짜의 매출 기록 조회
- * @param {string} date - 'YYYY-MM-DD'
- * @returns {Promise<Array>}
- */
+/** 특정 날짜의 매출 조회 */
 export async function getServicesByDate(date) {
-  const db = await getDB();
-  return db.getAllFromIndex('services', 'date', date);
+  const res = await fetch(`/api/services?date=${date}`);
+  return res.json();
 }
 
-/**
- * 기간별 매출 기록 조회
- * @param {string} startDate
- * @param {string} endDate
- * @returns {Promise<Array>}
- */
-export async function getServicesByDateRange(startDate, endDate) {
-  const db = await getDB();
-  const range = IDBKeyRange.bound(startDate, endDate);
-  return db.getAllFromIndex('services', 'date', range);
+/** 기간별 매출 조회 */
+export async function getServicesByDateRange(start, end) {
+  const res = await fetch(`/api/services?start=${start}&end=${end}`);
+  return res.json();
 }
 
-/**
- * 전체 매출 기록 조회
- * @returns {Promise<Array>}
- */
-export async function getAllServices() {
-  const db = await getDB();
-  return db.getAll('services');
-}
-
-// ─── 매입 CRUD ───
-
-/**
- * 매입 기록 저장
- * @param {{ date: string, supplier: string, amount: number, memo: string }} record
- * @returns {Promise<number>}
- */
-export async function addPurchase(record) {
-  const db = await getDB();
-  return db.add('purchases', {
-    ...record,
-    createdAt: new Date().toISOString()
+/** 매출 추가 */
+export async function addService(data) {
+  const res = await fetch('/api/services', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
   });
+  return res.json();
 }
 
-/**
- * 매입 기록 수정
- * @param {object} record
- */
-export async function updatePurchase(record) {
-  const db = await getDB();
-  return db.put('purchases', record);
+/** 매출 수정 */
+export async function updateService(data) {
+  const res = await fetch(`/api/services/${data.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
 }
 
-/**
- * 매입 기록 삭제
- * @param {number} id
- */
-export async function deletePurchase(id) {
-  const db = await getDB();
-  return db.delete('purchases', id);
+/** 매출 삭제 */
+export async function deleteService(id) {
+  const res = await fetch(`/api/services/${id}`, {
+    method: 'DELETE'
+  });
+  return res.json();
 }
 
-/**
- * 기간별 매입 기록 조회
- * @param {string} startDate
- * @param {string} endDate
- * @returns {Promise<Array>}
- */
-export async function getPurchasesByDateRange(startDate, endDate) {
-  const db = await getDB();
-  const range = IDBKeyRange.bound(startDate, endDate);
-  return db.getAllFromIndex('purchases', 'date', range);
-}
+// ─── 매입 ───
 
-/**
- * 전체 매입 기록 조회
- * @returns {Promise<Array>}
- */
+/** 전체 매입 조회 */
 export async function getAllPurchases() {
-  const db = await getDB();
-  return db.getAll('purchases');
+  const res = await fetch('/api/purchases');
+  return res.json();
 }
 
-/**
- * 매입처 목록 추출 (자동완성용, 중복 제거)
- * @returns {Promise<string[]>}
- */
+/** 기간별 매입 조회 */
+export async function getPurchasesByDateRange(start, end) {
+  const res = await fetch(`/api/purchases?start=${start}&end=${end}`);
+  return res.json();
+}
+
+/** 매입 추가 */
+export async function addPurchase(data) {
+  const res = await fetch('/api/purchases', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+/** 매입 수정 */
+export async function updatePurchase(data) {
+  const res = await fetch(`/api/purchases/${data.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+/** 매입 삭제 */
+export async function deletePurchase(id) {
+  const res = await fetch(`/api/purchases/${id}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+}
+
+/** 매입처 목록 조회 */
 export async function getSupplierList() {
-  const db = await getDB();
-  const all = await db.getAll('purchases');
-  const set = new Set(all.map((p) => p.supplier));
-  return [...set].sort();
+  const res = await fetch('/api/purchases?suppliers');
+  return res.json();
 }
 
 // ─── 백업/복원 ───
 
-/**
- * 전체 데이터 JSON으로 내보내기
- * @returns {Promise<object>}
- */
+/** 전체 데이터 백업 (JSON) */
 export async function exportAllData() {
-  const db = await getDB();
-  const services = await db.getAll('services');
-  const purchases = await db.getAll('purchases');
-  return {
-    version: DB_VERSION,
-    exportedAt: new Date().toISOString(),
-    services,
-    purchases
-  };
+  const res = await fetch('/api/data');
+  return res.json();
 }
 
-/**
- * JSON 데이터로 복원 (기존 데이터 덮어쓰기)
- * @param {object} data
- */
+/** 데이터 복원 */
 export async function importAllData(data) {
-  const db = await getDB();
-
-  // 기존 데이터 삭제
-  const tx = db.transaction(['services', 'purchases'], 'readwrite');
-  await tx.objectStore('services').clear();
-  await tx.objectStore('purchases').clear();
-  await tx.done;
-
-  // 새 데이터 삽입
-  const tx2 = db.transaction(['services', 'purchases'], 'readwrite');
-  for (const s of data.services || []) {
-    // id 제거 후 재삽입 (autoIncrement 충돌 방지)
-    const { id, ...rest } = s;
-    await tx2.objectStore('services').add(rest);
-  }
-  for (const p of data.purchases || []) {
-    const { id, ...rest } = p;
-    await tx2.objectStore('purchases').add(rest);
-  }
-  await tx2.done;
+  const res = await fetch('/api/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
 }
 
-/**
- * 전체 데이터 삭제
- */
+/** 전체 데이터 삭제 */
 export async function clearAllData() {
-  const db = await getDB();
-  const tx = db.transaction(['services', 'purchases'], 'readwrite');
-  await tx.objectStore('services').clear();
-  await tx.objectStore('purchases').clear();
-  await tx.done;
+  const res = await fetch('/api/data', {
+    method: 'DELETE'
+  });
+  return res.json();
 }
