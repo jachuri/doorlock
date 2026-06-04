@@ -4,8 +4,8 @@ import { redirect } from '@sveltejs/kit';
 export async function handle({ event, resolve }) {
   const { pathname } = event.url;
 
-  // 로그인 페이지와 인증 API는 항상 접근 허용
-  if (pathname === '/login' || pathname === '/api/auth') {
+  // 로그인 페이지와 인증/초기화 API는 항상 접근 허용
+  if (pathname === '/login' || pathname === '/api/auth' || pathname === '/api/db/init') {
     return resolve(event);
   }
 
