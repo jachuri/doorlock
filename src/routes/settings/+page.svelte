@@ -134,11 +134,11 @@
     <div class="info-card card">
       <div class="info-row">
         <span>버전</span>
-        <span class="text-secondary">1.0.0</span>
+        <span class="text-secondary">1.1.0</span>
       </div>
       <div class="info-row">
         <span>저장소</span>
-        <span class="text-secondary">브라우저 로컬 (IndexedDB)</span>
+        <span class="text-secondary">서버 DB (Neon Postgres)</span>
       </div>
       <div class="info-row">
         <span>서버 비용</span>
@@ -149,11 +149,10 @@
 
   <section class="section">
     <div class="tip-card card">
-      <p class="tip-title">💡 데이터 보관 팁</p>
+      <p class="tip-title">💡 안내</p>
       <p class="tip-text">
-        브라우저 캐시를 삭제하면 데이터가 사라집니다.
-        주기적으로 <strong>백업 다운로드</strong>를 해두세요.
-        구글 드라이브에 백업 파일을 보관하면 안전합니다.
+        데이터는 서버에 저장되므로 PC·모바일 어디서든 동일한 데이터를 확인할 수 있습니다.
+        만약을 대비해 주기적으로 <strong>백업 다운로드</strong>를 권장합니다.
       </p>
     </div>
   </section>
