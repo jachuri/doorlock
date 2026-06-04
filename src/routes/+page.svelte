@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import { getServicesByDate, getServicesByDateRange, getPurchasesByDateRange } from '$lib/db.js';
   import { formatDate, formatDateDisplay, formatCurrency, formatPercent, formatMonth } from '$lib/utils.js';
 
@@ -35,7 +35,7 @@
   let monthlyMargin = $derived(monthlyTotalSales > 0 ? (monthlyNetProfit / monthlyTotalSales) * 100 : 0);
   let monthlyCount = $derived(monthlyServices.length);
 
-  onMount(() => {
+  afterNavigate(() => {
     loadData();
   });
 
