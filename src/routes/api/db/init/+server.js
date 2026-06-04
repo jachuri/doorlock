@@ -1,8 +1,16 @@
 import { json } from '@sveltejs/kit';
 import { getSQL } from '$lib/server/db.js';
 
-/** 테이블 초기화 — 최초 1회 호출 */
+/** 테이블 초기화 — 브라우저에서 접속하면 자동 실행 */
+export async function GET() {
+  return initDB();
+}
+
 export async function POST() {
+  return initDB();
+}
+
+async function initDB() {
   const sql = getSQL();
 
   await sql`
