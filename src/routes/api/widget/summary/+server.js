@@ -55,10 +55,12 @@ export async function GET({ url, request }) {
   const daily = {};
   let totalSales = 0;
   let totalCost = 0;
+  let totalCount = 0;
   for (const [date, { sales, cost, count } ] of map.entries()) {
     daily[date] = { sales, cost, profit: sales - cost, count };
     totalSales += sales;
     totalCost += cost;
+    totalCount += count;
   }
 
   const netProfit = totalSales - totalCost;
@@ -71,7 +73,8 @@ export async function GET({ url, request }) {
       sales: totalSales,
       cost: totalCost,
       netProfit,
-      marginRate: Math.round(marginRate * 10) / 10
+      marginRate: Math.round(marginRate * 10) / 10,
+      count: totalCount
     }
   });
 }
