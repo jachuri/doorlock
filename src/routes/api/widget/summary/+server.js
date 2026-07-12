@@ -34,10 +34,10 @@ export async function GET({ url, request }) {
     WHERE date >= ${start} AND date <= ${end}
   `;
 
-  /** @type {Map<string, { sales: number, cost: number }>} */
+  /** @type {Map<string, { sales: number, cost: number, count: number }>} */
   const map = new Map();
   const ensure = (date) => {
-    if (!map.has(date)) map.set(date, { sales: 0, cost: 0 });
+    if (!map.has(date)) map.set(date, { sales: 0, cost: 0, count: 0 });
     return map.get(date);
   };
 
@@ -45,6 +45,7 @@ export async function GET({ url, request }) {
     const d = ensure(s.date);
     d.sales += s.amount;
     d.cost += s.parts_cost || 0;
+    d.count += 1;
   }
   for (const p of purchases) {
     const d = ensure(p.date);
@@ -54,8 +55,8 @@ export async function GET({ url, request }) {
   const daily = {};
   let totalSales = 0;
   let totalCost = 0;
-  for (const [date, { sales, cost } ] of map.entries()) {
-    daily[date] = { sales, cost, profit: sales - cost };
+  for (const [date, { sales, cost, count } ] of map.entries()) {
+    daily[date] = { sales, cost, profit: sales - cost, count };
     totalSales += sales;
     totalCost += cost;
   }
