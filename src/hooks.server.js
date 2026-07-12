@@ -9,6 +9,11 @@ export async function handle({ event, resolve }) {
     return resolve(event);
   }
 
+  // 위젯 API는 쿠키 대신 자체 헤더(x-widget-key) 인증을 사용하므로 통과
+  if (pathname === '/api/widget/summary') {
+    return resolve(event);
+  }
+
   // 정적 파일은 통과
   if (
     pathname.startsWith('/_app') ||
