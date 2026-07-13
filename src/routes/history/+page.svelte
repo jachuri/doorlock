@@ -3,7 +3,7 @@
   import { getServicesByDateRange, getPurchasesByDateRange, updateService, deleteService } from '$lib/db.js';
   import { exportToExcel } from '$lib/excel.js';
   import {
-    formatDate, formatDateDisplay, formatCurrency, formatPercent,
+    formatDate, formatDateDisplay, formatCurrency, formatPercent, formatCompactAmount,
     formatAmountInput, parseAmount,
     getThisMonthRange, getThisWeekRange, getLastMonthRange
   } from '$lib/utils.js';
@@ -17,6 +17,9 @@
   ];
 
   const PAYMENT_METHODS = ['현금', '카드', '계좌이체'];
+  const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+  let viewMode = $state('list'); // 'list' | 'calendar'
 
   let selectedPeriod = $state('month');
   let startDate = $state('');
@@ -26,6 +29,15 @@
 
   let services = $state([]);
   let purchases = $state([]);
+
+  // 달력 모드 전용 상태 (기간 필터와 별개로 해당 월 전체 데이터를 불러옴)
+  const today = new Date();
+  let calendarYear = $state(today.getFullYear());
+  let calendarMonth = $state(today.getMonth() + 1); // 1~12
+  let calendarServices = $state([]);
+  let calendarPurchases = $state([]);
+  let calendarLoading = $state(false);
+  let calendarExpandedDate = $state('');
 
   // 수정 모달
   let showModal = $state(false);
@@ -41,12 +53,12 @@
   // 토스트
   let toast = $state({ show: false, message: '', type: 'success' });
 
-  // 일별 집계
-  let dailySummaries = $derived.by(() => {
-    /** @type {Map<string, { sales: number, parts: number, purchase: number, count: number, services: Array }>} */
+  /** 매출/매입 배열로 날짜별 집계 맵을 만든다 */
+  function buildDailyMap(servicesArr, purchasesArr) {
+    /** @type {Map<string, { sales: number, parts: number, purchase: number, count: number, services: Array, netProfit: number, margin: number }>} */
     const map = new Map();
 
-    for (const s of services) {
+    for (const s of servicesArr) {
       if (!map.has(s.date)) map.set(s.date, { sales: 0, parts: 0, purchase: 0, count: 0, services: [] });
       const d = map.get(s.date);
       d.sales += s.amount;
@@ -55,27 +67,57 @@
       d.services.push(s);
     }
 
-    for (const p of purchases) {
+    for (const p of purchasesArr) {
       if (!map.has(p.date)) map.set(p.date, { sales: 0, parts: 0, purchase: 0, count: 0, services: [] });
       map.get(p.date).purchase += p.amount;
     }
 
+    for (const data of map.values()) {
+      data.netProfit = data.sales - data.parts - data.purchase;
+      data.margin = data.sales > 0 ? (data.netProfit / data.sales) * 100 : 0;
+    }
+
+    return map;
+  }
+
+  // 일별 집계 (리스트 모드)
+  let dailySummaries = $derived.by(() => {
+    const map = buildDailyMap(services, purchases);
     return [...map.entries()]
-      .map(([date, data]) => ({
-        date,
-        ...data,
-        netProfit: data.sales - data.parts - data.purchase,
-        margin: data.sales > 0 ? ((data.sales - data.parts - data.purchase) / data.sales) * 100 : 0
-      }))
+      .map(([date, data]) => ({ date, ...data }))
       .sort((a, b) => b.date.localeCompare(a.date));
   });
 
-  // 전체 집계
+  // 전체 집계 (리스트 모드)
   let totalSales = $derived(services.reduce((s, r) => s + r.amount, 0));
   let totalParts = $derived(services.reduce((s, r) => s + (r.partsCost || 0), 0));
   let totalPurchase = $derived(purchases.reduce((s, r) => s + r.amount, 0));
   let totalNetProfit = $derived(totalSales - totalParts - totalPurchase);
   let totalMargin = $derived(totalSales > 0 ? (totalNetProfit / totalSales) * 100 : 0);
+
+  // 일별 집계 (달력 모드 — 선택한 월 전체)
+  let calendarDailyMap = $derived.by(() => buildDailyMap(calendarServices, calendarPurchases));
+
+  // 전체 집계 (달력 모드)
+  let calendarTotalSales = $derived(calendarServices.reduce((s, r) => s + r.amount, 0));
+  let calendarTotalParts = $derived(calendarServices.reduce((s, r) => s + (r.partsCost || 0), 0));
+  let calendarTotalPurchase = $derived(calendarPurchases.reduce((s, r) => s + r.amount, 0));
+  let calendarTotalNetProfit = $derived(calendarTotalSales - calendarTotalParts - calendarTotalPurchase);
+  let calendarTotalMargin = $derived(calendarTotalSales > 0 ? (calendarTotalNetProfit / calendarTotalSales) * 100 : 0);
+  let calendarTotalCount = $derived(calendarServices.length);
+
+  // 달력 그리드
+  let calendarDaysInMonth = $derived(new Date(calendarYear, calendarMonth, 0).getDate());
+  let calendarFirstWeekday = $derived(new Date(calendarYear, calendarMonth - 1, 1).getDay());
+  let calendarCells = $derived.by(() => {
+    const cells = [];
+    for (let i = 0; i < calendarFirstWeekday; i++) cells.push(null);
+    for (let d = 1; d <= calendarDaysInMonth; d++) {
+      const dateKey = `${calendarYear}-${String(calendarMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ day: d, dateKey, weekday: new Date(calendarYear, calendarMonth - 1, d).getDay() });
+    }
+    return cells;
+  });
 
   // 펼치기 상태
   let expandedDate = $state('');
@@ -137,6 +179,57 @@
     expandedDate = expandedDate === date ? '' : date;
   }
 
+  function toggleCalendarExpand(date) {
+    calendarExpandedDate = calendarExpandedDate === date ? '' : date;
+  }
+
+  /** 리스트 ↔ 달력 전환. 달력으로 전환 시 현재 보고 있던 기간(종료일)이 속한 월을 자동으로 연다 */
+  function toggleViewMode() {
+    if (viewMode === 'list') {
+      const base = endDate ? new Date(endDate + 'T00:00:00') : new Date();
+      calendarYear = base.getFullYear();
+      calendarMonth = base.getMonth() + 1;
+      viewMode = 'calendar';
+      calendarExpandedDate = '';
+      loadCalendarData();
+    } else {
+      viewMode = 'list';
+    }
+  }
+
+  async function loadCalendarData() {
+    calendarLoading = true;
+    const mm = String(calendarMonth).padStart(2, '0');
+    const start = `${calendarYear}-${mm}-01`;
+    const lastDay = new Date(calendarYear, calendarMonth, 0).getDate();
+    const end = `${calendarYear}-${mm}-${String(lastDay).padStart(2, '0')}`;
+    [calendarServices, calendarPurchases] = await Promise.all([
+      getServicesByDateRange(start, end),
+      getPurchasesByDateRange(start, end)
+    ]);
+    calendarLoading = false;
+  }
+
+  function goToPrevMonth() {
+    calendarMonth -= 1;
+    if (calendarMonth < 1) {
+      calendarMonth = 12;
+      calendarYear -= 1;
+    }
+    calendarExpandedDate = '';
+    loadCalendarData();
+  }
+
+  function goToNextMonth() {
+    calendarMonth += 1;
+    if (calendarMonth > 12) {
+      calendarMonth = 1;
+      calendarYear += 1;
+    }
+    calendarExpandedDate = '';
+    loadCalendarData();
+  }
+
   async function handleExport() {
     if (services.length === 0 && purchases.length === 0) return;
     exporting = true;
@@ -196,7 +289,7 @@
 
       showToast('수정 완료');
       closeModal();
-      await loadData();
+      await (viewMode === 'calendar' ? loadCalendarData() : loadData());
     } catch {
       showToast('수정에 실패했습니다', 'error');
     } finally {
@@ -212,7 +305,7 @@
       await deleteService(editingRecord.id);
       showToast('삭제 완료');
       closeModal();
-      await loadData();
+      await (viewMode === 'calendar' ? loadCalendarData() : loadData());
     } catch {
       showToast('삭제에 실패했습니다', 'error');
     }
@@ -231,116 +324,223 @@
 <div class="page">
   <header class="page-header">
     <h1>내역 조회</h1>
-    <button
-      class="btn btn-ghost"
-      onclick={handleExport}
-      disabled={exporting || (services.length === 0 && purchases.length === 0)}
-    >
-      {exporting ? '내보내는 중...' : '엑셀'}
-    </button>
+    <div class="header-actions">
+      <div class="view-toggle" role="group" aria-label="보기 방식">
+        <button class="view-toggle-btn" class:active={viewMode === 'list'} onclick={() => viewMode === 'calendar' && toggleViewMode()}>
+          리스트
+        </button>
+        <button class="view-toggle-btn" class:active={viewMode === 'calendar'} onclick={() => viewMode === 'list' && toggleViewMode()}>
+          달력
+        </button>
+      </div>
+      <button
+        class="btn btn-ghost"
+        onclick={handleExport}
+        disabled={exporting || (services.length === 0 && purchases.length === 0)}
+      >
+        {exporting ? '내보내는 중...' : '엑셀'}
+      </button>
+    </div>
   </header>
 
-  <!-- 기간 필터 -->
-  <div class="filter-bar">
-    <div class="chip-group">
-      {#each PERIODS as p}
-        <button
-          class="chip"
-          class:active={selectedPeriod === p.key}
-          onclick={() => updateRange(p.key)}
-        >
-          {p.label}
-        </button>
-      {/each}
+  {#if viewMode === 'list'}
+    <!-- 기간 필터 -->
+    <div class="filter-bar">
+      <div class="chip-group">
+        {#each PERIODS as p}
+          <button
+            class="chip"
+            class:active={selectedPeriod === p.key}
+            onclick={() => updateRange(p.key)}
+          >
+            {p.label}
+          </button>
+        {/each}
+      </div>
+
+      {#if selectedPeriod === 'custom'}
+        <div class="custom-range">
+          <input type="date" class="input-field input-sm" bind:value={startDate} onchange={onCustomDateChange} />
+          <span class="range-separator">~</span>
+          <input type="date" class="input-field input-sm" bind:value={endDate} onchange={onCustomDateChange} />
+        </div>
+      {:else}
+        <p class="range-display">{formatDateDisplay(startDate)} ~ {formatDateDisplay(endDate)}</p>
+      {/if}
     </div>
 
-    {#if selectedPeriod === 'custom'}
-      <div class="custom-range">
-        <input type="date" class="input-field input-sm" bind:value={startDate} onchange={onCustomDateChange} />
-        <span class="range-separator">~</span>
-        <input type="date" class="input-field input-sm" bind:value={endDate} onchange={onCustomDateChange} />
+    {#if loading}
+      <div class="loading"><div class="loading-dot"></div></div>
+    {:else if dailySummaries.length === 0}
+      <div class="empty-state">
+        <p>선택한 기간에 데이터가 없습니다</p>
       </div>
     {:else}
-      <p class="range-display">{formatDateDisplay(startDate)} ~ {formatDateDisplay(endDate)}</p>
+      <!-- 일별 리스트 -->
+      <ul class="daily-list">
+        {#each dailySummaries as day}
+          <li class="daily-item">
+            <button class="daily-header" onclick={() => toggleExpand(day.date)}>
+              <div class="daily-left">
+                <span class="daily-date">{formatDateDisplay(day.date)}</span>
+                <span class="daily-meta">{day.count}건</span>
+              </div>
+              <div class="daily-right">
+                <span class="daily-sales">{formatCurrency(day.sales)}</span>
+                <span class="daily-profit" class:positive={day.netProfit >= 0} class:negative={day.netProfit < 0}>
+                  {formatCurrency(day.netProfit)}
+                </span>
+              </div>
+              <svg class="expand-icon" class:expanded={expandedDate === day.date} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
+            {#if expandedDate === day.date}
+              <div class="daily-detail">
+                {#each day.services as s}
+                  <button class="detail-row detail-row-btn" onclick={() => openEditModal(s)}>
+                    <span class="detail-time">{s.time || '--:--'}</span>
+                    <span class="detail-method">{s.paymentMethod}</span>
+                    <span class="detail-memo">{s.memo || ''}</span>
+                    <span class="detail-amount font-mono">{formatCurrency(s.amount)}</span>
+                    <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                {/each}
+                {#if day.purchase > 0}
+                  <div class="detail-row purchase-row">
+                    <span class="detail-time">매입</span>
+                    <span></span>
+                    <span></span>
+                    <span class="detail-amount font-mono text-negative">-{formatCurrency(day.purchase)}</span>
+                    <span></span>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </li>
+        {/each}
+      </ul>
     {/if}
-  </div>
 
-  {#if loading}
-    <div class="loading"><div class="loading-dot"></div></div>
-  {:else if dailySummaries.length === 0}
-    <div class="empty-state">
-      <p>선택한 기간에 데이터가 없습니다</p>
-    </div>
+    <!-- 하단 요약 -->
+    {#if !loading && dailySummaries.length > 0}
+      <footer class="summary-footer">
+        <div class="summary-grid">
+          <div class="summary-cell">
+            <span class="metric-label">총매출</span>
+            <span class="metric-value-sm font-mono">{formatCurrency(totalSales)}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="metric-label">총지출</span>
+            <span class="metric-value-sm font-mono">{formatCurrency(totalParts + totalPurchase)}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="metric-label">순수익</span>
+            <span class="metric-value-sm font-mono" class:positive={totalNetProfit >= 0} class:negative={totalNetProfit < 0}>
+              {formatCurrency(totalNetProfit)}
+            </span>
+          </div>
+          <div class="summary-cell">
+            <span class="metric-label">마진</span>
+            <span class="metric-value-sm font-mono">{formatPercent(totalMargin)}</span>
+          </div>
+        </div>
+      </footer>
+    {/if}
   {:else}
-    <!-- 일별 리스트 -->
-    <ul class="daily-list">
-      {#each dailySummaries as day}
-        <li class="daily-item">
-          <button class="daily-header" onclick={() => toggleExpand(day.date)}>
-            <div class="daily-left">
-              <span class="daily-date">{formatDateDisplay(day.date)}</span>
-              <span class="daily-meta">{day.count}건</span>
-            </div>
-            <div class="daily-right">
-              <span class="daily-sales">{formatCurrency(day.sales)}</span>
-              <span class="daily-profit" class:positive={day.netProfit >= 0} class:negative={day.netProfit < 0}>
-                {formatCurrency(day.netProfit)}
-              </span>
-            </div>
-            <svg class="expand-icon" class:expanded={expandedDate === day.date} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
+    <!-- 달력 모드 -->
+    <div class="calendar-nav">
+      <button class="calendar-nav-btn" onclick={goToPrevMonth} aria-label="이전 달">‹</button>
+      <span class="calendar-nav-label">{calendarYear}년 {calendarMonth}월</span>
+      <button class="calendar-nav-btn" onclick={goToNextMonth} aria-label="다음 달">›</button>
+    </div>
 
-          {#if expandedDate === day.date}
-            <div class="daily-detail">
-              {#each day.services as s}
-                <button class="detail-row detail-row-btn" onclick={() => openEditModal(s)}>
-                  <span class="detail-time">{s.time || '--:--'}</span>
-                  <span class="detail-method">{s.paymentMethod}</span>
-                  <span class="detail-memo">{s.memo || ''}</span>
-                  <span class="detail-amount font-mono">{formatCurrency(s.amount)}</span>
-                  <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </button>
-              {/each}
-              {#if day.purchase > 0}
-                <div class="detail-row purchase-row">
-                  <span class="detail-time">매입</span>
-                  <span></span>
-                  <span></span>
-                  <span class="detail-amount font-mono text-negative">-{formatCurrency(day.purchase)}</span>
-                  <span></span>
-                </div>
-              {/if}
+    {#if calendarLoading}
+      <div class="loading"><div class="loading-dot"></div></div>
+    {:else}
+      <div class="calendar-weekdays">
+        {#each WEEKDAYS as w, i}
+          <span class="calendar-weekday" class:sunday={i === 0} class:saturday={i === 6}>{w}</span>
+        {/each}
+      </div>
+
+      <div class="calendar-grid">
+        {#each calendarCells as cell}
+          {#if cell === null}
+            <div class="calendar-cell empty"></div>
+          {:else}
+            {@const entry = calendarDailyMap.get(cell.dateKey)}
+            {#if entry}
+              <button
+                class="calendar-cell"
+                class:selected={calendarExpandedDate === cell.dateKey}
+                onclick={() => toggleCalendarExpand(cell.dateKey)}
+              >
+                <span class="calendar-day" class:sunday={cell.weekday === 0} class:saturday={cell.weekday === 6}>{cell.day}</span>
+                <span class="calendar-amount" class:positive={entry.netProfit >= 0} class:negative={entry.netProfit < 0}>
+                  {formatCompactAmount(entry.netProfit)}
+                </span>
+                <span class="calendar-count">{entry.count}건</span>
+              </button>
+            {:else}
+              <div class="calendar-cell">
+                <span class="calendar-day" class:sunday={cell.weekday === 0} class:saturday={cell.weekday === 6}>{cell.day}</span>
+              </div>
+            {/if}
+          {/if}
+        {/each}
+      </div>
+
+      {#if calendarExpandedDate && calendarDailyMap.get(calendarExpandedDate)}
+        {@const day = calendarDailyMap.get(calendarExpandedDate)}
+        <div class="daily-detail calendar-detail">
+          <p class="calendar-detail-date">{formatDateDisplay(calendarExpandedDate)}</p>
+          {#each day.services as s}
+            <button class="detail-row detail-row-btn" onclick={() => openEditModal(s)}>
+              <span class="detail-time">{s.time || '--:--'}</span>
+              <span class="detail-method">{s.paymentMethod}</span>
+              <span class="detail-memo">{s.memo || ''}</span>
+              <span class="detail-amount font-mono">{formatCurrency(s.amount)}</span>
+              <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          {/each}
+          {#if day.purchase > 0}
+            <div class="detail-row purchase-row">
+              <span class="detail-time">매입</span>
+              <span></span>
+              <span></span>
+              <span class="detail-amount font-mono text-negative">-{formatCurrency(day.purchase)}</span>
+              <span></span>
             </div>
           {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
+        </div>
+      {/if}
+    {/if}
 
-  <!-- 하단 요약 -->
-  {#if !loading && dailySummaries.length > 0}
-    <footer class="summary-footer">
-      <div class="summary-grid">
-        <div class="summary-cell">
-          <span class="metric-label">총매출</span>
-          <span class="metric-value-sm font-mono">{formatCurrency(totalSales)}</span>
+    <!-- 하단 요약 -->
+    {#if !calendarLoading}
+      <footer class="summary-footer">
+        <div class="summary-grid">
+          <div class="summary-cell">
+            <span class="metric-label">총매출</span>
+            <span class="metric-value-sm font-mono">{formatCurrency(calendarTotalSales)}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="metric-label">총지출</span>
+            <span class="metric-value-sm font-mono">{formatCurrency(calendarTotalParts + calendarTotalPurchase)}</span>
+          </div>
+          <div class="summary-cell">
+            <span class="metric-label">순수익</span>
+            <span class="metric-value-sm font-mono" class:positive={calendarTotalNetProfit >= 0} class:negative={calendarTotalNetProfit < 0}>
+              {formatCurrency(calendarTotalNetProfit)}
+            </span>
+          </div>
+          <div class="summary-cell">
+            <span class="metric-label">마진</span>
+            <span class="metric-value-sm font-mono">{formatPercent(calendarTotalMargin)}</span>
+          </div>
         </div>
-        <div class="summary-cell">
-          <span class="metric-label">총지출</span>
-          <span class="metric-value-sm font-mono">{formatCurrency(totalParts + totalPurchase)}</span>
-        </div>
-        <div class="summary-cell">
-          <span class="metric-label">순수익</span>
-          <span class="metric-value-sm font-mono" class:positive={totalNetProfit >= 0} class:negative={totalNetProfit < 0}>
-            {formatCurrency(totalNetProfit)}
-          </span>
-        </div>
-        <div class="summary-cell">
-          <span class="metric-label">마진</span>
-          <span class="metric-value-sm font-mono">{formatPercent(totalMargin)}</span>
-        </div>
-      </div>
-    </footer>
+      </footer>
+    {/if}
   {/if}
 </div>
 
@@ -462,6 +662,150 @@
     font-size: var(--text-xl);
     font-weight: var(--weight-bold);
     letter-spacing: -0.02em;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .view-toggle {
+    display: flex;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    padding: 2px;
+  }
+
+  .view-toggle-btn {
+    padding: var(--space-1) var(--space-3);
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+  .view-toggle-btn.active {
+    background: var(--accent-muted);
+    color: var(--accent-text);
+  }
+
+  /* 달력 모드 */
+  .calendar-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-5);
+  }
+
+  .calendar-nav-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--radius-full);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    font-size: var(--text-lg);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+  .calendar-nav-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .calendar-nav-label {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    min-width: 8ch;
+    text-align: center;
+  }
+
+  .calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  .calendar-weekday {
+    text-align: center;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    padding-bottom: var(--space-2);
+  }
+  .calendar-weekday.sunday { color: var(--negative); }
+  .calendar-weekday.saturday { color: var(--accent-text); }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+
+  .calendar-cell {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    font-family: inherit;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .calendar-cell:hover {
+    background: var(--bg-hover);
+  }
+  .calendar-cell.selected {
+    background: var(--accent-muted);
+    outline: 1px solid var(--accent);
+  }
+  .calendar-cell.empty {
+    background: transparent;
+    cursor: default;
+  }
+  div.calendar-cell {
+    cursor: default;
+    background: transparent;
+  }
+
+  .calendar-day {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+  .calendar-day.sunday { color: var(--negative); }
+  .calendar-day.saturday { color: var(--accent-text); }
+
+  .calendar-amount {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: var(--weight-medium);
+  }
+
+  .calendar-count {
+    font-size: 9px;
+    color: var(--text-tertiary);
+  }
+
+  .calendar-detail {
+    padding-left: 0;
+  }
+
+  .calendar-detail-date {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--text-secondary);
+    padding-bottom: var(--space-2);
   }
 
   .filter-bar {

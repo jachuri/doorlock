@@ -149,3 +149,19 @@ export function formatAmountInput(value) {
   if (isNaN(num) || num === 0) return '';
   return num.toLocaleString('ko-KR');
 }
+
+/**
+ * 좁은 공간(달력 칸 등)에 넣을 축약 금액 표기
+ * @param {number} amount
+ * @returns {string} 예: 125000 -> "12.5만", 320 -> "320"
+ */
+export function formatCompactAmount(amount) {
+  if (amount == null || isNaN(amount)) return '0';
+  const sign = amount < 0 ? '-' : '';
+  const abs = Math.abs(amount);
+  if (abs >= 10000) {
+    const man = abs / 10000;
+    return `${sign}${man.toFixed(man >= 100 ? 0 : 1)}만`;
+  }
+  return `${sign}${abs.toLocaleString('ko-KR')}`;
+}
