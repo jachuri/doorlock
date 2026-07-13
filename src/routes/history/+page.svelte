@@ -791,7 +791,7 @@
   .calendar-amount {
     max-width: 100%;
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 7px;
     font-weight: var(--weight-medium);
     white-space: nowrap;
     overflow: hidden;
