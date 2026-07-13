@@ -477,7 +477,7 @@
               >
                 <span class="calendar-day" class:sunday={cell.weekday === 0} class:saturday={cell.weekday === 6}>{cell.day}</span>
                 <span class="calendar-amount" class:positive={entry.netProfit >= 0} class:negative={entry.netProfit < 0}>
-                  {formatNumber(entry.netProfit)}
+                  {formatNumber(Math.abs(entry.netProfit))}
                 </span>
                 <span class="calendar-count">{entry.count}건</span>
               </button>
@@ -789,13 +789,11 @@
   .calendar-day.saturday { color: var(--accent-text); }
 
   .calendar-amount {
-    max-width: 100%;
     font-family: var(--font-mono);
-    font-size: 7px;
+    font-size: 12px;
     font-weight: var(--weight-medium);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: clip;
+    transform: scaleX(0.6);
   }
 
   .calendar-count {
