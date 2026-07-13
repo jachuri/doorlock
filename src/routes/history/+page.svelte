@@ -3,7 +3,7 @@
   import { getServicesByDateRange, getPurchasesByDateRange, updateService, deleteService } from '$lib/db.js';
   import { exportToExcel } from '$lib/excel.js';
   import {
-    formatDate, formatDateDisplay, formatCurrency, formatPercent, formatCompactAmount,
+    formatDate, formatDateDisplay, formatCurrency, formatPercent, formatNumber,
     formatAmountInput, parseAmount,
     getThisMonthRange, getThisWeekRange, getLastMonthRange
   } from '$lib/utils.js';
@@ -477,7 +477,7 @@
               >
                 <span class="calendar-day" class:sunday={cell.weekday === 0} class:saturday={cell.weekday === 6}>{cell.day}</span>
                 <span class="calendar-amount" class:positive={entry.netProfit >= 0} class:negative={entry.netProfit < 0}>
-                  {formatCompactAmount(entry.netProfit)}
+                  {formatNumber(entry.netProfit)}
                 </span>
                 <span class="calendar-count">{entry.count}건</span>
               </button>
