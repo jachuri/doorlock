@@ -745,11 +745,12 @@
 
   .calendar-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 2px;
   }
 
   .calendar-cell {
+    min-width: 0;
     aspect-ratio: 1 / 1;
     display: flex;
     flex-direction: column;
@@ -761,6 +762,7 @@
     background: var(--bg-surface);
     font-family: inherit;
     cursor: pointer;
+    overflow: hidden;
     transition: background var(--duration-fast) var(--ease-out);
   }
   .calendar-cell:hover {
@@ -787,9 +789,13 @@
   .calendar-day.saturday { color: var(--accent-text); }
 
   .calendar-amount {
+    max-width: 100%;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: var(--weight-medium);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
   }
 
   .calendar-count {
