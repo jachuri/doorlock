@@ -476,6 +476,8 @@
                 onclick={() => toggleCalendarExpand(cell.dateKey)}
               >
                 <span class="calendar-day" class:sunday={cell.weekday === 0} class:saturday={cell.weekday === 6}>{cell.day}</span>
+                <span class="calendar-sales">{formatNumber(entry.sales)}</span>
+                <span class="calendar-purchase">{formatNumber(entry.purchase)}</span>
                 <span class="calendar-amount" class:positive={entry.netProfit >= 0} class:negative={entry.netProfit < 0}>
                   {formatNumber(Math.abs(entry.netProfit))}
                 </span>
@@ -746,12 +748,12 @@
   .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-auto-rows: minmax(76px, auto);
     gap: 2px;
   }
 
   .calendar-cell {
     min-width: 0;
-    aspect-ratio: 1 / 1;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -787,6 +789,22 @@
   }
   .calendar-day.sunday { color: var(--negative); }
   .calendar-day.saturday { color: var(--accent-text); }
+
+  .calendar-sales,
+  .calendar-purchase {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    white-space: nowrap;
+    transform: scaleX(0.75);
+  }
+
+  .calendar-sales {
+    color: var(--accent-text);
+  }
+
+  .calendar-purchase {
+    color: var(--text-tertiary);
+  }
 
   .calendar-amount {
     font-family: var(--font-mono);
