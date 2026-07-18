@@ -4,7 +4,6 @@
     getAllPurchases, addPurchase, updatePurchase, deletePurchase, getSupplierList
   } from '$lib/db.js';
   import { formatDate, formatDateDisplay, formatCurrency, formatAmountInput, parseAmount } from '$lib/utils.js';
-  import { ensureNotificationPermission, scheduleSaveNotification } from '$lib/notify.js';
 
   let purchases = $state([]);
   let supplierList = $state([]);
@@ -108,7 +107,6 @@
       return;
     }
 
-    ensureNotificationPermission();
     formSaving = true;
     try {
       const data = {
@@ -124,7 +122,6 @@
       } else {
         await addPurchase(data);
         showToast('매입 추가 완료');
-        scheduleSaveNotification();
       }
 
       await loadData();
