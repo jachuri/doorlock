@@ -14,6 +14,11 @@ export async function handle({ event, resolve }) {
     return resolve(event);
   }
 
+  // 읽기 전용 export API도 쿠키 대신 자체 헤더(x-claude-key) 인증을 사용하므로 통과
+  if (pathname === '/api/claude/export') {
+    return resolve(event);
+  }
+
   // 정적 파일은 통과
   if (
     pathname.startsWith('/_app') ||
