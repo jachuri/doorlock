@@ -1,6 +1,7 @@
 <script>
   import { addService } from '$lib/db.js';
   import { formatDate, formatTime, formatCurrency, formatAmountInput, parseAmount } from '$lib/utils.js';
+  import { ensureNotificationPermission, scheduleSaveNotification } from '$lib/notify.js';
 
   const PAYMENT_METHODS = ['현금', '카드', '계좌이체'];
 
@@ -34,6 +35,7 @@
       return;
     }
 
+    ensureNotificationPermission();
     saving = true;
     try {
       await addService({
@@ -46,6 +48,7 @@
       });
 
       showToast('저장 완료', 'success');
+      scheduleSaveNotification();
       resetForm();
     } catch (err) {
       showToast('저장에 실패했습니다', 'error');
