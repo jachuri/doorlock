@@ -8,7 +8,7 @@
   const navItems = [
     { href: '/', label: '대시보드', icon: 'dashboard' },
     { href: '/input', label: '매출입력', icon: 'add' },
-    { href: '/purchase', label: '매입', icon: 'purchase' },
+    { href: '/purchase', label: '매입입력', icon: 'purchase' },
     { href: '/history', label: '내역', icon: 'history' },
     { href: '/settings', label: '설정', icon: 'settings' },
   ];

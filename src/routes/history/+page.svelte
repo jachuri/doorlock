@@ -1,6 +1,9 @@
 <script>
   import { onMount } from 'svelte';
-  import { getServicesByDateRange, getPurchasesByDateRange, updateService, deleteService } from '$lib/db.js';
+  import {
+    getServicesByDateRange, getPurchasesByDateRange, updateService, deleteService,
+    updatePurchase, deletePurchase, getSupplierList
+  } from '$lib/db.js';
   import { exportToExcel } from '$lib/excel.js';
   import {
     formatDate, formatDateDisplay, formatCurrency, formatPercent, formatNumber,
@@ -39,27 +42,38 @@
   let calendarLoading = $state(false);
   let calendarExpandedDate = $state('');
 
-  // 수정 모달
+  // 수정 모달 ('service' | 'purchase' 공용)
   let showModal = $state(false);
   let editingRecord = $state(null);
+  let recordType = $state('service');
   let formDate = $state('');
   let formTime = $state('');
   let formPaymentMethod = $state('카드');
   let formAmountStr = $state('');
   let formPartsCostStr = $state('');
+  let formSupplier = $state('');
   let formMemo = $state('');
   let formSaving = $state(false);
+
+  // 매입처 자동완성 (매입 수정용)
+  let supplierList = $state([]);
+  let showSuggestions = $state(false);
+  let filteredSuppliers = $derived(
+    formSupplier.length > 0
+      ? supplierList.filter((s) => s.toLowerCase().includes(formSupplier.toLowerCase()))
+      : []
+  );
 
   // 토스트
   let toast = $state({ show: false, message: '', type: 'success' });
 
   /** 매출/매입 배열로 날짜별 집계 맵을 만든다 */
   function buildDailyMap(servicesArr, purchasesArr) {
-    /** @type {Map<string, { sales: number, parts: number, purchase: number, count: number, services: Array, netProfit: number, margin: number }>} */
+    /** @type {Map<string, { sales: number, parts: number, purchase: number, count: number, services: Array, purchases: Array, netProfit: number, margin: number }>} */
     const map = new Map();
 
     for (const s of servicesArr) {
-      if (!map.has(s.date)) map.set(s.date, { sales: 0, parts: 0, purchase: 0, count: 0, services: [] });
+      if (!map.has(s.date)) map.set(s.date, { sales: 0, parts: 0, purchase: 0, count: 0, services: [], purchases: [] });
       const d = map.get(s.date);
       d.sales += s.amount;
       d.parts += s.partsCost || 0;
@@ -68,8 +82,10 @@
     }
 
     for (const p of purchasesArr) {
-      if (!map.has(p.date)) map.set(p.date, { sales: 0, parts: 0, purchase: 0, count: 0, services: [] });
-      map.get(p.date).purchase += p.amount;
+      if (!map.has(p.date)) map.set(p.date, { sales: 0, parts: 0, purchase: 0, count: 0, services: [], purchases: [] });
+      const d = map.get(p.date);
+      d.purchase += p.amount;
+      d.purchases.push(p);
     }
 
     for (const data of map.values()) {
@@ -124,7 +140,12 @@
 
   onMount(() => {
     updateRange('month');
+    loadSupplierList();
   });
+
+  async function loadSupplierList() {
+    supplierList = await getSupplierList();
+  }
 
   function updateRange(period) {
     selectedPeriod = period;
@@ -244,32 +265,77 @@
 
   // ─── 수정/삭제 ───
 
-  function openEditModal(record) {
+  /**
+   * @param {*} record
+   * @param {'service' | 'purchase'} type
+   */
+  function openEditModal(record, type = 'service') {
     editingRecord = record;
+    recordType = type;
     formDate = record.date;
-    formTime = record.time || '';
-    formPaymentMethod = record.paymentMethod || '카드';
     formAmountStr = record.amount > 0 ? record.amount.toLocaleString('ko-KR') : '';
-    formPartsCostStr = record.partsCost > 0 ? record.partsCost.toLocaleString('ko-KR') : '';
     formMemo = record.memo || '';
+    if (type === 'purchase') {
+      formSupplier = record.supplier || '';
+    } else {
+      formTime = record.time || '';
+      formPaymentMethod = record.paymentMethod || '카드';
+      formPartsCostStr = record.partsCost > 0 ? record.partsCost.toLocaleString('ko-KR') : '';
+    }
     showModal = true;
   }
 
   function closeModal() {
     showModal = false;
     editingRecord = null;
+    showSuggestions = false;
   }
 
   function onAmountInput(e) {
     formAmountStr = formatAmountInput(e.target.value);
   }
 
-  function onPartsCostInput(e) {
-    formPartsCostStr = formatAmountInput(e.target.value);
+  /** @param {string} name */
+  function selectSupplier(name) {
+    formSupplier = name;
+    showSuggestions = false;
   }
 
   async function handleSave() {
     const amount = parseAmount(formAmountStr);
+
+    if (recordType === 'purchase') {
+      if (!formSupplier.trim()) {
+        showToast('매입처를 입력해주세요', 'error');
+        return;
+      }
+      if (amount <= 0) {
+        showToast('금액을 입력해주세요', 'error');
+        return;
+      }
+
+      formSaving = true;
+      try {
+        await updatePurchase({
+          ...editingRecord,
+          date: formDate,
+          supplier: formSupplier.trim(),
+          amount,
+          memo: formMemo.trim() || ''
+        });
+
+        showToast('수정 완료');
+        closeModal();
+        await (viewMode === 'calendar' ? loadCalendarData() : loadData());
+        await loadSupplierList();
+      } catch {
+        showToast('수정에 실패했습니다', 'error');
+      } finally {
+        formSaving = false;
+      }
+      return;
+    }
+
     if (amount <= 0) {
       showToast('매출액을 입력해주세요', 'error');
       return;
@@ -299,6 +365,20 @@
 
   async function handleDelete() {
     if (!editingRecord) return;
+
+    if (recordType === 'purchase') {
+      if (!confirm(`${editingRecord.supplier} — ${formatCurrency(editingRecord.amount)}\n이 기록을 삭제하시겠습니까?`)) return;
+      try {
+        await deletePurchase(editingRecord.id);
+        showToast('삭제 완료');
+        closeModal();
+        await (viewMode === 'calendar' ? loadCalendarData() : loadData());
+      } catch {
+        showToast('삭제에 실패했습니다', 'error');
+      }
+      return;
+    }
+
     if (!confirm(`${formatCurrency(editingRecord.amount)} (${editingRecord.time || '--:--'})\n이 기록을 삭제하시겠습니까?`)) return;
 
     try {
@@ -405,15 +485,15 @@
                     <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                 {/each}
-                {#if day.purchase > 0}
-                  <div class="detail-row purchase-row">
+                {#each day.purchases as p, i}
+                  <button class="detail-row detail-row-btn" class:purchase-row={i === 0} onclick={() => openEditModal(p, 'purchase')}>
                     <span class="detail-time">매입</span>
-                    <span></span>
-                    <span></span>
-                    <span class="detail-amount font-mono text-negative">-{formatCurrency(day.purchase)}</span>
-                    <span></span>
-                  </div>
-                {/if}
+                    <span class="detail-method">{p.supplier}</span>
+                    <span class="detail-memo">{p.memo || ''}</span>
+                    <span class="detail-amount font-mono text-negative">-{formatCurrency(p.amount)}</span>
+                    <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                {/each}
               </div>
             {/if}
           </li>
@@ -505,15 +585,15 @@
               <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
           {/each}
-          {#if day.purchase > 0}
-            <div class="detail-row purchase-row">
+          {#each day.purchases as p, i}
+            <button class="detail-row detail-row-btn" class:purchase-row={i === 0} onclick={() => openEditModal(p, 'purchase')}>
               <span class="detail-time">매입</span>
-              <span></span>
-              <span></span>
-              <span class="detail-amount font-mono text-negative">-{formatCurrency(day.purchase)}</span>
-              <span></span>
-            </div>
-          {/if}
+              <span class="detail-method">{p.supplier}</span>
+              <span class="detail-memo">{p.memo || ''}</span>
+              <span class="detail-amount font-mono text-negative">-{formatCurrency(p.amount)}</span>
+              <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          {/each}
         </div>
       {/if}
     {/if}
@@ -549,9 +629,9 @@
 <!-- 매출 수정 모달 -->
 {#if showModal}
   <div class="overlay" onclick={closeModal} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && closeModal()} role="dialog" aria-label="매출 수정" tabindex="-1">
+    <div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && closeModal()} role="dialog" aria-label={recordType === 'purchase' ? '매입 수정' : '매출 수정'} tabindex="-1">
       <div class="modal-header">
-        <h2>매출 수정</h2>
+        <h2>{recordType === 'purchase' ? '매입 수정' : '매출 수정'}</h2>
         <div class="modal-actions">
           <button class="btn btn-danger btn-sm" onclick={handleDelete}>삭제</button>
           <button class="btn-icon" onclick={closeModal} aria-label="닫기">
@@ -560,66 +640,95 @@
         </div>
       </div>
       <form class="modal-body" onsubmit={(e) => { e.preventDefault(); handleSave(); }}>
-        <div class="row-2">
+        {#if recordType === 'purchase'}
           <div class="input-group">
             <label for="edit-date">날짜</label>
             <input id="edit-date" type="date" class="input-field" bind:value={formDate} />
           </div>
+
+          <div class="input-group" style="position:relative">
+            <label for="edit-supplier">매입처</label>
+            <input
+              id="edit-supplier"
+              type="text"
+              class="input-field"
+              bind:value={formSupplier}
+              onfocus={() => (showSuggestions = true)}
+              onblur={() => setTimeout(() => (showSuggestions = false), 150)}
+              autocomplete="off"
+            />
+            {#if showSuggestions && filteredSuppliers.length > 0}
+              <ul class="suggestions">
+                {#each filteredSuppliers as s}
+                  <li>
+                    <button type="button" class="suggestion-item" onmousedown={() => selectSupplier(s)}>{s}</button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+
           <div class="input-group">
-            <label for="edit-time">시간</label>
-            <input id="edit-time" type="time" class="input-field" bind:value={formTime} />
+            <label for="edit-amount">금액</label>
+            <div class="input-with-unit">
+              <input
+                id="edit-amount"
+                type="text"
+                inputmode="numeric"
+                class="input-field input-amount"
+                placeholder="0"
+                value={formAmountStr}
+                oninput={onAmountInput}
+                autocomplete="off"
+              />
+              <span class="input-unit">원</span>
+            </div>
           </div>
-        </div>
+        {:else}
+          <div class="row-2">
+            <div class="input-group">
+              <label for="edit-date">날짜</label>
+              <input id="edit-date" type="date" class="input-field" bind:value={formDate} />
+            </div>
+            <div class="input-group">
+              <label for="edit-time">시간</label>
+              <input id="edit-time" type="time" class="input-field" bind:value={formTime} />
+            </div>
+          </div>
 
-        <div class="input-group">
-          <label for="edit-amount">매출액</label>
-          <div class="input-with-unit">
-            <input
-              id="edit-amount"
-              type="text"
-              inputmode="numeric"
-              class="input-field input-amount"
-              placeholder="0"
-              value={formAmountStr}
-              oninput={onAmountInput}
-              autocomplete="off"
-            />
-            <span class="input-unit">원</span>
+          <div class="input-group">
+            <label for="edit-amount">매출액</label>
+            <div class="input-with-unit">
+              <input
+                id="edit-amount"
+                type="text"
+                inputmode="numeric"
+                class="input-field input-amount"
+                placeholder="0"
+                value={formAmountStr}
+                oninput={onAmountInput}
+                autocomplete="off"
+              />
+              <span class="input-unit">원</span>
+            </div>
           </div>
-        </div>
 
-        <div class="input-group">
-          <label for="edit-parts">부품비</label>
-          <div class="input-with-unit">
-            <input
-              id="edit-parts"
-              type="text"
-              inputmode="numeric"
-              class="input-field input-amount"
-              placeholder="0"
-              value={formPartsCostStr}
-              oninput={onPartsCostInput}
-              autocomplete="off"
-            />
-            <span class="input-unit">원</span>
+          <div class="input-group">
+            <label id="edit-payment-label">결제수단</label>
+            <div class="chip-group" role="radiogroup" aria-labelledby="edit-payment-label">
+              {#each PAYMENT_METHODS as method}
+                <button
+                  type="button"
+                  class="chip"
+                  class:active={formPaymentMethod === method}
+                  onclick={() => formPaymentMethod = method}
+                >
+                  {method}
+                </button>
+              {/each}
+            </div>
           </div>
-        </div>
-
-        <div class="input-group">
-          <label id="edit-payment-label">결제수단</label>
-          <div class="chip-group" role="radiogroup" aria-labelledby="edit-payment-label">
-            {#each PAYMENT_METHODS as method}
-              <button
-                type="button"
-                class="chip"
-                class:active={formPaymentMethod === method}
-                onclick={() => formPaymentMethod = method}
-              >
-                {method}
-              </button>
-            {/each}
-          </div>
-        </div>
+        {/if}
 
         <div class="input-group">
           <label for="edit-memo">메모</label>
@@ -1048,6 +1157,38 @@
     color: var(--text-tertiary);
     pointer-events: none;
   }
+
+  /* 자동완성 (매입처) */
+  .suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: var(--space-1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    list-style: none;
+    z-index: 10;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .suggestion-item {
+    display: block;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+  }
+  .suggestion-item:hover {
+    background: var(--bg-hover);
+  }
+
   .btn-icon {
     display: flex;
     align-items: center;
