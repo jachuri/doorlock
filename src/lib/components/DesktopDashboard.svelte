@@ -1,5 +1,4 @@
 <script>
-  import { onMount } from 'svelte';
   import { getServicesByDateRange, getPurchasesByDateRange } from '$lib/db.js';
   import { formatDate, formatMonth } from '$lib/utils.js';
   import KpiCard from '$lib/components/charts/KpiCard.svelte';
@@ -7,22 +6,46 @@
   import Sparkline from '$lib/components/charts/Sparkline.svelte';
   import ShareBars from '$lib/components/charts/ShareBars.svelte';
 
-  const now = new Date();
-  const rangeStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-  const rangeStartStr = formatDate(rangeStart);
-  const rangeEndStr = formatDate(now);
+  const today = new Date();
+  let selectedYear = $state(today.getFullYear());
+  let selectedMonth = $state(today.getMonth() + 1); // 1~12
+
+  let isCurrentMonth = $derived(selectedYear === today.getFullYear() && selectedMonth === today.getMonth() + 1);
+
+  function goToPrevMonth() {
+    selectedMonth -= 1;
+    if (selectedMonth < 1) { selectedMonth = 12; selectedYear -= 1; }
+  }
+
+  function goToNextMonth() {
+    if (isCurrentMonth) return;
+    selectedMonth += 1;
+    if (selectedMonth > 12) { selectedMonth = 1; selectedYear += 1; }
+  }
+
+  // 선택한 달을 포함해 최근 6개월 범위 (선택한 달이 이번달이면 오늘까지만)
+  let rangeStartStr = $derived(formatDate(new Date(selectedYear, selectedMonth - 1 - 5, 1)));
+  let rangeEndStr = $derived(
+    isCurrentMonth ? formatDate(today) : formatDate(new Date(selectedYear, selectedMonth, 0))
+  );
 
   let loading = $state(true);
   let services = $state([]);
   let purchases = $state([]);
 
-  onMount(loadData);
+  $effect(() => {
+    loadData(rangeStartStr, rangeEndStr);
+  });
 
-  async function loadData() {
+  /**
+   * @param {string} start
+   * @param {string} end
+   */
+  async function loadData(start, end) {
     loading = true;
     const [s, p] = await Promise.all([
-      getServicesByDateRange(rangeStartStr, rangeEndStr),
-      getPurchasesByDateRange(rangeStartStr, rangeEndStr),
+      getServicesByDateRange(start, end),
+      getPurchasesByDateRange(start, end),
     ]);
     services = s;
     purchases = p;
@@ -35,11 +58,11 @@
     return `${m}월`;
   }
 
-  // 최근 6개월(이번달 포함) 키 목록
+  // 선택한 달을 포함해 최근 6개월 키 목록
   let monthKeys = $derived.by(() => {
     const keys = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const d = new Date(selectedYear, selectedMonth - 1 - i, 1);
       keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
     return keys;
@@ -111,7 +134,7 @@
 
   // 이번달 일별 매출
   let dailySales = $derived.by(() => {
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const arr = new Array(daysInMonth).fill(0);
     for (const s of services) {
       if (!s.date.startsWith(currentMonthKey)) continue;
@@ -162,7 +185,20 @@
   <header class="report-header">
     <div>
       <h1>대시보드</h1>
-      <span class="report-sub">{formatMonth(now.getFullYear(), now.getMonth() + 1)} 기준</span>
+      <div class="month-nav">
+        <button class="btn-icon" onclick={goToPrevMonth} aria-label="이전 달">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span class="report-sub">{formatMonth(selectedYear, selectedMonth)} 기준</span>
+        <button class="btn-icon" onclick={goToNextMonth} disabled={isCurrentMonth} aria-label="다음 달">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        {#if !isCurrentMonth}
+          <button class="btn btn-ghost btn-sm" onclick={() => { selectedYear = today.getFullYear(); selectedMonth = today.getMonth() + 1; }}>
+            이번달로
+          </button>
+        {/if}
+      </div>
     </div>
     <div class="report-actions">
       <a href="/input" class="btn btn-ghost">매출 입력</a>
@@ -174,7 +210,7 @@
     <div class="loading"><div class="loading-dot"></div></div>
   {:else}
     <section class="kpi-grid">
-      <KpiCard label="이번달 매출" value={currentMonth.sales} format="currency" deltaPercent={salesGrowth} />
+      <KpiCard label="매출" value={currentMonth.sales} format="currency" deltaPercent={salesGrowth} />
       <KpiCard label="순수익" value={currentMonth.netProfit} format="currency" deltaPercent={profitGrowth} />
       <KpiCard label="처리 건수" value={currentMonth.count} format="count" deltaPercent={countGrowth} />
       <KpiCard label="판매마진" value={currentMonth.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" />
@@ -196,14 +232,14 @@
 
     <div class="report-row">
       <section class="report-section card">
-        <h2 class="section-title">이번달 일별 매출 추이</h2>
+        <h2 class="section-title">일별 매출 추이</h2>
         <Sparkline data={dailySales} />
       </section>
 
       <section class="report-section card">
         <h2 class="section-title">결제수단별 비중</h2>
         {#if paymentBreakdown.length === 0}
-          <p class="empty-hint">이번달 매출 기록이 없습니다</p>
+          <p class="empty-hint">매출 기록이 없습니다</p>
         {:else}
           <ShareBars items={paymentBreakdown} />
         {/if}
@@ -214,7 +250,7 @@
       <section class="report-section card">
         <h2 class="section-title">매입처 TOP 5</h2>
         {#if supplierBreakdown.length === 0}
-          <p class="empty-hint">이번달 매입 기록이 없습니다</p>
+          <p class="empty-hint">매입 기록이 없습니다</p>
         {:else}
           <ShareBars items={supplierBreakdown} />
         {/if}
@@ -223,7 +259,7 @@
       <section class="report-section card">
         <h2 class="section-title">카테고리별 매입 비중</h2>
         {#if categoryBreakdown.length === 0}
-          <p class="empty-hint">이번달 매입 기록이 없습니다</p>
+          <p class="empty-hint">매입 기록이 없습니다</p>
         {:else}
           <ShareBars items={categoryBreakdown} />
         {/if}
@@ -257,6 +293,43 @@
   .report-sub {
     font-size: var(--text-sm);
     color: var(--text-tertiary);
+  }
+
+  .month-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+  .btn-icon:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .btn-icon:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .btn-icon:disabled:hover {
+    background: transparent;
+  }
+
+  .btn-sm {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-xs);
   }
 
   .report-actions {

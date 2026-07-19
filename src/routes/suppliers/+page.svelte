@@ -22,7 +22,13 @@
 
   async function loadData() {
     loading = true;
-    suppliers = await getSuppliers();
+    const result = await getSuppliers();
+    if (Array.isArray(result)) {
+      suppliers = result;
+    } else {
+      suppliers = [];
+      showToast(result?.message || '매입처 목록을 불러오지 못했습니다', 'error');
+    }
     loading = false;
   }
 

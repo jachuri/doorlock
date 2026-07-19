@@ -1,6 +1,6 @@
 <script>
   import { addService } from '$lib/db.js';
-  import { formatDate, formatTime, formatCurrency, formatAmountInput, parseAmount } from '$lib/utils.js';
+  import { formatDate, formatTime, formatAmountInput, parseAmount } from '$lib/utils.js';
 
   const PAYMENT_METHODS = ['현금', '카드', '계좌이체'];
 
@@ -8,24 +8,16 @@
   let time = $state(formatTime());
   let paymentMethod = $state('카드');
   let amountStr = $state('');
-  let partsCostStr = $state('');
   let memo = $state('');
 
   let saving = $state(false);
   let toast = $state({ show: false, message: '', type: 'success' });
 
   let amount = $derived(parseAmount(amountStr));
-  let partsCost = $derived(parseAmount(partsCostStr));
-  let netProfit = $derived(amount - partsCost);
 
   function onAmountInput(e) {
     const raw = e.target.value;
     amountStr = formatAmountInput(raw);
-  }
-
-  function onPartsCostInput(e) {
-    const raw = e.target.value;
-    partsCostStr = formatAmountInput(raw);
   }
 
   async function handleSave() {
@@ -41,7 +33,7 @@
         time,
         paymentMethod,
         amount,
-        partsCost: partsCost || 0,
+        partsCost: 0,
         memo: memo.trim() || ''
       });
 
@@ -60,7 +52,6 @@
     time = formatTime(now);
     paymentMethod = '카드';
     amountStr = '';
-    partsCostStr = '';
     memo = '';
   }
 
@@ -122,24 +113,6 @@
       </div>
     </div>
 
-    <!-- 부품비 -->
-    <div class="input-group">
-      <label for="partsCost">부품비 <span class="label-optional">선택</span></label>
-      <div class="input-with-unit">
-        <input
-          id="partsCost"
-          type="text"
-          inputmode="numeric"
-          class="input-field input-amount"
-          placeholder="0"
-          value={partsCostStr}
-          oninput={onPartsCostInput}
-          autocomplete="off"
-        />
-        <span class="input-unit">원</span>
-      </div>
-    </div>
-
     <!-- 결제수단 -->
     <div class="input-group">
       <label id="payment-label">결제수단</label>
@@ -169,29 +142,6 @@
         autocomplete="off"
       />
     </div>
-
-    <!-- 순수익 계산 -->
-    {#if amount > 0}
-      <div class="profit-display card">
-        <div class="profit-row">
-          <span>매출</span>
-          <span class="font-mono">{formatCurrency(amount)}</span>
-        </div>
-        {#if partsCost > 0}
-          <div class="profit-row sub">
-            <span>부품비</span>
-            <span class="font-mono text-negative">-{formatCurrency(partsCost)}</span>
-          </div>
-        {/if}
-        <hr class="divider" />
-        <div class="profit-row total">
-          <span>순수익</span>
-          <span class="font-mono" class:positive={netProfit >= 0} class:negative={netProfit < 0}>
-            {formatCurrency(netProfit)}
-          </span>
-        </div>
-      </div>
-    {/if}
 
     <!-- 저장 -->
     <button
@@ -255,35 +205,6 @@
     color: var(--text-tertiary);
     font-weight: var(--weight-normal);
   }
-
-  /* 순수익 표시 */
-  .profit-display {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .profit-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-  }
-
-  .profit-row.sub {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-  }
-
-  .profit-row.total {
-    font-size: var(--text-lg);
-    font-weight: var(--weight-semibold);
-    color: var(--text-primary);
-  }
-
-  .positive { color: var(--positive); }
-  .negative { color: var(--negative); }
 
   .save-btn {
     margin-top: var(--space-2);
