@@ -48,9 +48,12 @@
   let currentMonthKey = $derived(monthKeys[monthKeys.length - 1]);
 
   let monthlyBuckets = $derived.by(() => {
-    /** @type {Map<string, { key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, count: number }>} */
+    /** @type {Map<string, { key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, inventoryPurchase: number, count: number }>} */
     const map = new Map(
-      monthKeys.map((k) => [k, { key: k, label: monthLabel(k), sales: 0, parts: 0, purchase: 0, adSpend: 0, count: 0 }])
+      monthKeys.map((k) => [
+        k,
+        { key: k, label: monthLabel(k), sales: 0, parts: 0, purchase: 0, adSpend: 0, inventoryPurchase: 0, count: 0 },
+      ])
     );
     for (const s of services) {
       const b = map.get(s.date.slice(0, 7));
@@ -64,15 +67,18 @@
       if (!b) continue;
       b.purchase += p.amount;
       if (p.category === '광고') b.adSpend += p.amount;
+      if (p.category === '재고') b.inventoryPurchase += p.amount;
     }
     return monthKeys.map((k) => {
-      const b = /** @type {{ key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, count: number }} */ (map.get(k));
+      const b = /** @type {{ key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, inventoryPurchase: number, count: number }} */ (map.get(k));
       const netProfit = b.sales - b.parts - b.purchase;
+      // 판매마진: 매출원가(부품비 + 재고매입)만 반영 — 광고비/비품비 등 운영비는 제외
+      const salesCost = b.parts + b.inventoryPurchase;
       return {
         ...b,
         netProfit,
         margin: b.sales > 0 ? (netProfit / b.sales) * 100 : 0,
-        salesMargin: b.sales > 0 ? ((b.sales - b.parts) / b.sales) * 100 : 0,
+        salesMargin: b.sales > 0 ? ((b.sales - salesCost) / b.sales) * 100 : 0,
         adSpendRatio: b.sales > 0 ? (b.adSpend / b.sales) * 100 : 0,
         roas: b.adSpend > 0 ? b.sales / b.adSpend : null,
       };
