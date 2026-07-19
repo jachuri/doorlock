@@ -1362,7 +1362,7 @@
 
     .daily-list {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: var(--space-4);
       align-items: start;
     }
@@ -1376,12 +1376,15 @@
     .daily-header { padding: var(--space-5) var(--space-6); }
     .daily-detail { padding: 0 var(--space-6) var(--space-5); }
 
+    .daily-left {
+      gap: var(--space-2);
+    }
     .daily-date {
       font-size: var(--text-lg);
       font-weight: var(--weight-semibold);
     }
     .daily-meta {
-      font-size: var(--text-sm);
+      font-size: var(--text-base);
     }
 
     /* 순수익(daily-profit)이 한눈에 보이는 결론이고, 매출/매입은 그걸 뒷받침하는
