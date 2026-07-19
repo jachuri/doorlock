@@ -1430,7 +1430,7 @@
     }
     .daily-sales.text-negative {
       color: var(--negative);
-      font-size: var(--text-2xl);
+      font-size: var(--text-xl);
       font-weight: var(--weight-bold);
     }
     .daily-purchase {
@@ -1440,7 +1440,7 @@
       color: var(--text-tertiary);
     }
     .daily-profit {
-      font-size: var(--text-2xl);
+      font-size: var(--text-xl);
       font-weight: var(--weight-bold);
     }
 
