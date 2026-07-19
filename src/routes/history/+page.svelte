@@ -1370,21 +1370,28 @@
     .daily-detail { padding: 0 var(--space-5) var(--space-4); }
 
     .calendar-grid {
-      grid-auto-rows: minmax(112px, auto);
-      gap: 4px;
+      grid-auto-rows: minmax(132px, auto);
+      gap: 6px;
     }
-    .calendar-day { font-size: var(--text-sm); }
+    .calendar-cell {
+      gap: 4px;
+      padding: var(--space-2);
+    }
+    .calendar-day {
+      font-size: var(--text-base);
+      font-weight: var(--weight-medium);
+    }
     .calendar-sales,
     .calendar-purchase {
-      font-size: 11px;
-      transform: scaleX(0.92);
+      font-size: 14px;
+      transform: none;
     }
     .calendar-amount {
-      font-size: 16px;
-      transform: scaleX(0.9);
+      font-size: 22px;
+      transform: none;
     }
     .calendar-count {
-      font-size: 10px;
+      font-size: 12px;
     }
 
     .summary-grid {
