@@ -1325,8 +1325,8 @@
 
   .summary-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-3) var(--space-2);
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-2);
     text-align: center;
   }
 
@@ -1341,6 +1341,7 @@
     font-weight: var(--weight-semibold);
     letter-spacing: -0.02em;
     white-space: nowrap;
+    transform: scaleX(0.85);
   }
 
   /* 로딩/빈 */
@@ -1480,6 +1481,7 @@
     .metric-value-sm {
       font-size: var(--text-2xl);
       font-weight: var(--weight-bold);
+      transform: none;
     }
   }
 </style>
