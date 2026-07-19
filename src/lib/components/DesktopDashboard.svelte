@@ -1,40 +1,108 @@
 <script>
   import { getServicesByDateRange, getPurchasesByDateRange } from '$lib/db.js';
-  import { formatDate, formatMonth } from '$lib/utils.js';
+  import {
+    formatDate, formatDateDisplay,
+    getThisWeekRange, getThisMonthRange, getLastMonthRange
+  } from '$lib/utils.js';
   import KpiCard from '$lib/components/charts/KpiCard.svelte';
   import TrendChart from '$lib/components/charts/TrendChart.svelte';
   import Sparkline from '$lib/components/charts/Sparkline.svelte';
   import ShareBars from '$lib/components/charts/ShareBars.svelte';
 
-  const today = new Date();
-  let selectedYear = $state(today.getFullYear());
-  let selectedMonth = $state(today.getMonth() + 1); // 1~12
+  const PERIODS = [
+    { key: 'today', label: '오늘' },
+    { key: 'week', label: '이번 주' },
+    { key: 'month', label: '이번 달' },
+    { key: 'lastMonth', label: '지난 달' },
+    { key: 'custom', label: '직접선택' },
+  ];
 
-  let isCurrentMonth = $derived(selectedYear === today.getFullYear() && selectedMonth === today.getMonth() + 1);
+  let selectedPeriod = $state('month');
+  let startDate = $state('');
+  let endDate = $state('');
 
-  function goToPrevMonth() {
-    selectedMonth -= 1;
-    if (selectedMonth < 1) { selectedMonth = 12; selectedYear -= 1; }
+  /** @param {string} period */
+  function updateRange(period) {
+    selectedPeriod = period;
+    const today = formatDate();
+    switch (period) {
+      case 'today':
+        startDate = today;
+        endDate = today;
+        break;
+      case 'week': {
+        const r = getThisWeekRange();
+        startDate = r.start;
+        endDate = r.end;
+        break;
+      }
+      case 'month': {
+        const r = getThisMonthRange();
+        startDate = r.start;
+        endDate = r.end;
+        break;
+      }
+      case 'lastMonth': {
+        const r = getLastMonthRange();
+        startDate = r.start;
+        endDate = r.end;
+        break;
+      }
+      case 'custom':
+        break;
+    }
   }
 
-  function goToNextMonth() {
-    if (isCurrentMonth) return;
-    selectedMonth += 1;
-    if (selectedMonth > 12) { selectedMonth = 1; selectedYear += 1; }
+  updateRange('month');
+
+  // ─── 날짜 헬퍼 ───
+
+  /** @param {string} ymd */
+  function parseYmd(ymd) {
+    return new Date(ymd + 'T00:00:00');
   }
 
-  // 선택한 달을 포함해 최근 6개월 범위 (선택한 달이 이번달이면 오늘까지만)
-  let rangeStartStr = $derived(formatDate(new Date(selectedYear, selectedMonth - 1 - 5, 1)));
-  let rangeEndStr = $derived(
-    isCurrentMonth ? formatDate(today) : formatDate(new Date(selectedYear, selectedMonth, 0))
-  );
+  /**
+   * @param {string} ymd
+   * @param {number} days
+   */
+  function shiftDate(ymd, days) {
+    const d = parseYmd(ymd);
+    d.setDate(d.getDate() + days);
+    return formatDate(d);
+  }
+
+  /**
+   * @param {string} a
+   * @param {string} b
+   */
+  function daysBetween(a, b) {
+    return Math.round((parseYmd(b).getTime() - parseYmd(a).getTime()) / 86400000) + 1;
+  }
+
+  // ─── 이전 기간(선택 기간과 같은 길이의 직전 구간) ───
+  let periodLength = $derived(startDate && endDate ? daysBetween(startDate, endDate) : 1);
+  let prevEnd = $derived(startDate ? shiftDate(startDate, -1) : '');
+  let prevStart = $derived(prevEnd ? shiftDate(prevEnd, -(periodLength - 1)) : '');
+
+  // 추이 그래프용 — 종료일 기준 24개월 전 1일부터 (표시는 최근 12개월까지로 상한)
+  let trendStart = $derived.by(() => {
+    if (!endDate) return '';
+    const d = parseYmd(endDate);
+    return formatDate(new Date(d.getFullYear(), d.getMonth() - 23, 1));
+  });
+
+  let fetchStart = $derived.by(() => {
+    if (!prevStart || !trendStart) return '';
+    return prevStart < trendStart ? prevStart : trendStart;
+  });
 
   let loading = $state(true);
   let services = $state([]);
   let purchases = $state([]);
 
   $effect(() => {
-    loadData(rangeStartStr, rangeEndStr);
+    if (fetchStart && endDate) loadData(fetchStart, endDate);
   });
 
   /**
@@ -58,22 +126,29 @@
     return `${m}월`;
   }
 
-  // 선택한 달을 포함해 최근 6개월 키 목록
-  let monthKeys = $derived.by(() => {
+  // trendStart~endDate 사이 월 키 목록 (연속)
+  let allMonthKeys = $derived.by(() => {
+    if (!trendStart || !endDate) return [];
+    const start = parseYmd(trendStart);
+    const end = parseYmd(endDate);
     const keys = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(selectedYear, selectedMonth - 1 - i, 1);
-      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    let y = start.getFullYear();
+    let m = start.getMonth();
+    const endY = end.getFullYear();
+    const endM = end.getMonth();
+    while (y < endY || (y === endY && m <= endM)) {
+      keys.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+      m += 1;
+      if (m > 11) { m = 0; y += 1; }
     }
     return keys;
   });
 
-  let currentMonthKey = $derived(monthKeys[monthKeys.length - 1]);
-
+  // 월별 추이 — 데이터 없는 앞쪽 달은 잘라내고, 최근 12개월까지만 표시
   let monthlyBuckets = $derived.by(() => {
     /** @type {Map<string, { key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, inventoryPurchase: number, count: number }>} */
     const map = new Map(
-      monthKeys.map((k) => [
+      allMonthKeys.map((k) => [
         k,
         { key: k, label: monthLabel(k), sales: 0, parts: 0, purchase: 0, adSpend: 0, inventoryPurchase: 0, count: 0 },
       ])
@@ -92,10 +167,18 @@
       if (p.category === '광고') b.adSpend += p.amount;
       if (p.category === '재고') b.inventoryPurchase += p.amount;
     }
-    return monthKeys.map((k) => {
+
+    let keys = allMonthKeys;
+    const firstIdx = keys.findIndex((k) => {
+      const b = /** @type {{ sales: number, purchase: number, count: number }} */ (map.get(k));
+      return b.sales > 0 || b.purchase > 0 || b.count > 0;
+    });
+    keys = firstIdx === -1 ? keys.slice(-1) : keys.slice(firstIdx);
+    if (keys.length > 12) keys = keys.slice(keys.length - 12);
+
+    return keys.map((k) => {
       const b = /** @type {{ key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, inventoryPurchase: number, count: number }} */ (map.get(k));
       const netProfit = b.sales - b.parts - b.purchase;
-      // 판매마진: 매출원가(부품비 + 재고매입)만 반영 — 광고비/비품비 등 운영비는 제외
       const salesCost = b.parts + b.inventoryPurchase;
       return {
         ...b,
@@ -108,8 +191,39 @@
     });
   });
 
-  let currentMonth = $derived(monthlyBuckets[monthlyBuckets.length - 1]);
-  let prevMonth = $derived(monthlyBuckets[monthlyBuckets.length - 2]);
+  // ─── 선택 기간 / 이전 기간 집계 ───
+
+  /**
+   * @param {string} start
+   * @param {string} end
+   */
+  function aggregateRange(start, end) {
+    let sales = 0, parts = 0, purchase = 0, adSpend = 0, inventoryPurchase = 0, count = 0;
+    for (const s of services) {
+      if (s.date < start || s.date > end) continue;
+      sales += s.amount;
+      parts += s.partsCost || 0;
+      count += 1;
+    }
+    for (const p of purchases) {
+      if (p.date < start || p.date > end) continue;
+      purchase += p.amount;
+      if (p.category === '광고') adSpend += p.amount;
+      if (p.category === '재고') inventoryPurchase += p.amount;
+    }
+    const netProfit = sales - parts - purchase;
+    const salesCost = parts + inventoryPurchase;
+    return {
+      sales, parts, purchase, adSpend, inventoryPurchase, count, netProfit,
+      margin: sales > 0 ? (netProfit / sales) * 100 : 0,
+      salesMargin: sales > 0 ? ((sales - salesCost) / sales) * 100 : 0,
+      adSpendRatio: sales > 0 ? (adSpend / sales) * 100 : 0,
+      roas: adSpend > 0 ? sales / adSpend : null,
+    };
+  }
+
+  let currentPeriod = $derived(aggregateRange(startDate, endDate));
+  let prevPeriod = $derived(prevStart && prevEnd ? aggregateRange(prevStart, prevEnd) : null);
 
   /**
    * @param {number} curr
@@ -120,46 +234,48 @@
     return ((curr - prev) / prev) * 100;
   }
 
-  let salesGrowth = $derived(prevMonth ? growth(currentMonth.sales, prevMonth.sales) : null);
-  let profitGrowth = $derived(prevMonth ? growth(currentMonth.netProfit, prevMonth.netProfit) : null);
-  let countGrowth = $derived(prevMonth ? growth(currentMonth.count, prevMonth.count) : null);
-  let opMarginDelta = $derived(prevMonth ? currentMonth.margin - prevMonth.margin : null);
-  let salesMarginDelta = $derived(prevMonth ? currentMonth.salesMargin - prevMonth.salesMargin : null);
-  let adSpendRatioDelta = $derived(prevMonth ? currentMonth.adSpendRatio - prevMonth.adSpendRatio : null);
+  let salesGrowth = $derived(prevPeriod ? growth(currentPeriod.sales, prevPeriod.sales) : null);
+  let profitGrowth = $derived(prevPeriod ? growth(currentPeriod.netProfit, prevPeriod.netProfit) : null);
+  let countGrowth = $derived(prevPeriod ? growth(currentPeriod.count, prevPeriod.count) : null);
+  let opMarginDelta = $derived(prevPeriod ? currentPeriod.margin - prevPeriod.margin : null);
+  let salesMarginDelta = $derived(prevPeriod ? currentPeriod.salesMargin - prevPeriod.salesMargin : null);
+  let adSpendRatioDelta = $derived(prevPeriod ? currentPeriod.adSpendRatio - prevPeriod.adSpendRatio : null);
   let roasGrowth = $derived(
-    prevMonth && currentMonth.roas !== null && prevMonth.roas !== null
-      ? growth(currentMonth.roas, prevMonth.roas)
+    prevPeriod && currentPeriod.roas !== null && prevPeriod.roas !== null
+      ? growth(currentPeriod.roas, prevPeriod.roas)
       : null
   );
 
-  // 이번달 일별 매출
+  // 선택 기간 일별 매출
   let dailySales = $derived.by(() => {
-    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-    const arr = new Array(daysInMonth).fill(0);
+    if (!startDate || !endDate) return [];
+    const start = parseYmd(startDate);
+    const days = Math.max(daysBetween(startDate, endDate), 1);
+    const arr = new Array(days).fill(0);
     for (const s of services) {
-      if (!s.date.startsWith(currentMonthKey)) continue;
-      const day = Number(s.date.slice(8, 10));
-      arr[day - 1] += s.amount;
+      if (s.date < startDate || s.date > endDate) continue;
+      const idx = Math.round((parseYmd(s.date).getTime() - start.getTime()) / 86400000);
+      if (idx >= 0 && idx < arr.length) arr[idx] += s.amount;
     }
     return arr;
   });
 
-  // 이번달 결제수단별 비중
+  // 선택 기간 결제수단별 비중
   let paymentBreakdown = $derived.by(() => {
     const map = new Map();
     for (const s of services) {
-      if (!s.date.startsWith(currentMonthKey)) continue;
+      if (s.date < startDate || s.date > endDate) continue;
       const key = s.paymentMethod || '기타';
       map.set(key, (map.get(key) || 0) + s.amount);
     }
     return [...map.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
   });
 
-  // 이번달 매입처 TOP 5 (+ 기타)
+  // 선택 기간 매입처 TOP 5 (+ 기타)
   let supplierBreakdown = $derived.by(() => {
     const map = new Map();
     for (const p of purchases) {
-      if (!p.date.startsWith(currentMonthKey)) continue;
+      if (p.date < startDate || p.date > endDate) continue;
       const key = p.supplier || '기타';
       map.set(key, (map.get(key) || 0) + p.amount);
     }
@@ -169,11 +285,11 @@
     return [...sorted.slice(0, 5), { label: '기타', value: rest }];
   });
 
-  // 이번달 매입 카테고리별 비중
+  // 선택 기간 매입 카테고리별 비중
   let categoryBreakdown = $derived.by(() => {
     const map = new Map();
     for (const p of purchases) {
-      if (!p.date.startsWith(currentMonthKey)) continue;
+      if (p.date < startDate || p.date > endDate) continue;
       const key = p.category || '기타';
       map.set(key, (map.get(key) || 0) + p.amount);
     }
@@ -185,18 +301,22 @@
   <header class="report-header">
     <div>
       <h1>대시보드</h1>
-      <div class="month-nav">
-        <button class="btn-icon" onclick={goToPrevMonth} aria-label="이전 달">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <span class="report-sub">{formatMonth(selectedYear, selectedMonth)} 기준</span>
-        <button class="btn-icon" onclick={goToNextMonth} disabled={isCurrentMonth} aria-label="다음 달">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        {#if !isCurrentMonth}
-          <button class="btn btn-ghost btn-sm" onclick={() => { selectedYear = today.getFullYear(); selectedMonth = today.getMonth() + 1; }}>
-            이번달로
-          </button>
+      <div class="period-filter">
+        <div class="chip-group">
+          {#each PERIODS as p}
+            <button class="chip" class:active={selectedPeriod === p.key} onclick={() => updateRange(p.key)}>
+              {p.label}
+            </button>
+          {/each}
+        </div>
+        {#if selectedPeriod === 'custom'}
+          <div class="custom-range">
+            <input type="date" class="input-field input-sm" bind:value={startDate} />
+            <span class="range-separator">~</span>
+            <input type="date" class="input-field input-sm" bind:value={endDate} />
+          </div>
+        {:else}
+          <p class="range-display">{formatDateDisplay(startDate)} ~ {formatDateDisplay(endDate)}</p>
         {/if}
       </div>
     </div>
@@ -211,28 +331,29 @@
   {:else}
     <section class="kpi-section">
       <div class="kpi-row kpi-row-3">
-        <KpiCard label="매출" value={currentMonth.sales} format="currency" deltaPercent={salesGrowth} />
-        <KpiCard label="순수익" value={currentMonth.netProfit} format="currency" deltaPercent={profitGrowth} />
-        <KpiCard label="처리 건수" value={currentMonth.count} format="count" deltaPercent={countGrowth} />
+        <KpiCard label="매출" value={currentPeriod.sales} format="currency" deltaPercent={salesGrowth} deltaLabel="이전 기간 대비" />
+        <KpiCard label="순수익" value={currentPeriod.netProfit} format="currency" deltaPercent={profitGrowth} deltaLabel="이전 기간 대비" />
+        <KpiCard label="처리 건수" value={currentPeriod.count} format="count" deltaPercent={countGrowth} deltaLabel="이전 기간 대비" />
       </div>
       <div class="kpi-row kpi-row-2">
-        <KpiCard label="판매마진" value={currentMonth.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" />
-        <KpiCard label="운영마진" value={currentMonth.margin} format="percent" deltaPercent={opMarginDelta} deltaUnit="%p" />
+        <KpiCard label="판매마진" value={currentPeriod.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" deltaLabel="이전 기간 대비" />
+        <KpiCard label="운영마진" value={currentPeriod.margin} format="percent" deltaPercent={opMarginDelta} deltaUnit="%p" deltaLabel="이전 기간 대비" />
       </div>
       <div class="kpi-row kpi-row-2">
         <KpiCard
           label="ROAS"
-          value={(currentMonth.roas ?? 0) * 100}
-          unavailable={currentMonth.roas === null}
+          value={(currentPeriod.roas ?? 0) * 100}
+          unavailable={currentPeriod.roas === null}
           format="percent"
           deltaPercent={roasGrowth}
+          deltaLabel="이전 기간 대비"
         />
-        <KpiCard label="광고비 비중" value={currentMonth.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" />
+        <KpiCard label="광고비 비중" value={currentPeriod.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" deltaLabel="이전 기간 대비" />
       </div>
     </section>
 
     <section class="report-section card">
-      <h2 class="section-title">월별 성장 추이 (최근 6개월)</h2>
+      <h2 class="section-title">월별 성장 추이</h2>
       <TrendChart data={monthlyBuckets.map((b) => ({ label: b.label, sales: b.sales, netProfit: b.netProfit, adSpend: b.adSpend }))} />
     </section>
 
@@ -296,46 +417,31 @@
     letter-spacing: -0.02em;
   }
 
-  .report-sub {
-    font-size: var(--text-sm);
+  .period-filter {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .range-display {
+    font-size: var(--text-xs);
     color: var(--text-tertiary);
   }
 
-  .month-nav {
+  .custom-range {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin-top: var(--space-2);
   }
-
-  .btn-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-out);
+  .range-separator {
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
   }
-  .btn-icon:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-  .btn-icon:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-  .btn-icon:disabled:hover {
-    background: transparent;
-  }
-
-  .btn-sm {
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--text-xs);
+  .input-sm {
+    font-size: var(--text-sm);
+    padding: var(--space-2) var(--space-3);
   }
 
   .report-actions {
@@ -405,4 +511,6 @@
   @media (max-width: 1240px) {
     .report-row { grid-template-columns: 1fr; }
   }
+
+  input[type="date"] { color-scheme: dark; }
 </style>
