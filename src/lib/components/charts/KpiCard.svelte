@@ -45,6 +45,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    min-width: 0;
     background: var(--bg-raised);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
@@ -64,6 +65,7 @@
     font-size: var(--text-3xl);
     font-weight: var(--weight-bold);
     letter-spacing: -0.03em;
+    white-space: nowrap;
   }
 
   .kpi-delta {

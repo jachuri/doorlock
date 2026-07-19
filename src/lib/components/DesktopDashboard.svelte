@@ -209,20 +209,26 @@
   {#if loading}
     <div class="loading"><div class="loading-dot"></div></div>
   {:else}
-    <section class="kpi-grid">
-      <KpiCard label="매출" value={currentMonth.sales} format="currency" deltaPercent={salesGrowth} />
-      <KpiCard label="순수익" value={currentMonth.netProfit} format="currency" deltaPercent={profitGrowth} />
-      <KpiCard label="처리 건수" value={currentMonth.count} format="count" deltaPercent={countGrowth} />
-      <KpiCard label="판매마진" value={currentMonth.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" />
-      <KpiCard label="운영마진" value={currentMonth.margin} format="percent" deltaPercent={opMarginDelta} deltaUnit="%p" />
-      <KpiCard
-        label="ROAS"
-        value={currentMonth.roas ?? 0}
-        unavailable={currentMonth.roas === null}
-        format="ratio"
-        deltaPercent={roasGrowth}
-      />
-      <KpiCard label="광고비 비중" value={currentMonth.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" />
+    <section class="kpi-section">
+      <div class="kpi-row kpi-row-3">
+        <KpiCard label="매출" value={currentMonth.sales} format="currency" deltaPercent={salesGrowth} />
+        <KpiCard label="순수익" value={currentMonth.netProfit} format="currency" deltaPercent={profitGrowth} />
+        <KpiCard label="처리 건수" value={currentMonth.count} format="count" deltaPercent={countGrowth} />
+      </div>
+      <div class="kpi-row kpi-row-2">
+        <KpiCard label="판매마진" value={currentMonth.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" />
+        <KpiCard label="운영마진" value={currentMonth.margin} format="percent" deltaPercent={opMarginDelta} deltaUnit="%p" />
+      </div>
+      <div class="kpi-row kpi-row-2">
+        <KpiCard
+          label="ROAS"
+          value={currentMonth.roas ?? 0}
+          unavailable={currentMonth.roas === null}
+          format="ratio"
+          deltaPercent={roasGrowth}
+        />
+        <KpiCard label="광고비 비중" value={currentMonth.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" />
+      </div>
     </section>
 
     <section class="report-section card">
@@ -337,10 +343,21 @@
     gap: var(--space-3);
   }
 
-  .kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  .kpi-section {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-4);
+  }
+
+  .kpi-row {
+    display: grid;
+    gap: var(--space-4);
+  }
+  .kpi-row-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .kpi-row-2 {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .report-row {
