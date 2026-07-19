@@ -29,10 +29,12 @@ export async function PUT({ params, request }) {
   const [conflict] = await sql`SELECT id FROM suppliers WHERE name = ${trimmedName} AND id != ${id}`;
 
   if (conflict) {
-    // 병합: 오타 매입처의 매입 기록을 정식 매입처 이름으로 옮기고, 오타 행은 삭제
+    // 병합: 오타 매입처의 매입 기록을 정식 매입처 이름으로 옮기고, 오타 행은 삭제.
+    // 살아남는 정식 매입처의 카테고리는 건드리지 않는다 — 여기서 넘어오는 category는
+    // "지금 수정 중인(오타) 행"의 카테고리라서, 그대로 덮어쓰면 정식 매입처의
+    // 기존 분류가 오타 행의 값(대개 기본값 '기타')으로 깨진다.
     await sql`UPDATE purchases SET supplier = ${trimmedName} WHERE supplier = ${current.name}`;
     await sql`DELETE FROM suppliers WHERE id = ${id}`;
-    await sql`UPDATE suppliers SET category = ${category} WHERE id = ${conflict.id}`;
     return json({ success: true, merged: true, mergedIntoId: conflict.id });
   }
 
