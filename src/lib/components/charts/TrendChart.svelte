@@ -9,7 +9,8 @@
   const chartW = width - padding.left - padding.right;
   let chartH = $derived(height - padding.top - padding.bottom);
 
-  let maxVal = $derived(Math.max(1, ...data.map((d) => d.sales)));
+  let hasAdSpend = $derived(data.some((d) => (d.adSpend || 0) > 0));
+  let maxVal = $derived(Math.max(1, ...data.map((d) => Math.max(d.sales, d.adSpend || 0))));
   let minVal = $derived(Math.min(0, ...data.map((d) => d.netProfit)));
   let range = $derived(maxVal - minVal || 1);
 
@@ -31,6 +32,7 @@
         label: d.label,
         sales: d.sales,
         netProfit: d.netProfit,
+        adSpend: d.adSpend || 0,
         cx,
         x: cx - barWidth / 2,
         y: Math.min(y0, y1),
@@ -40,6 +42,7 @@
   );
 
   let linePoints = $derived(bars.map((b) => `${b.cx},${yFor(b.netProfit)}`).join(' '));
+  let adLinePoints = $derived(bars.map((b) => `${b.cx},${yFor(b.adSpend)}`).join(' '));
 
   let mounted = $state(false);
   onMount(() => {
@@ -61,9 +64,16 @@
       {#each bars as b}
         <circle class="profit-dot" cx={b.cx} cy={yFor(b.netProfit)} r="3.5" style:opacity={mounted ? 1 : 0} />
       {/each}
+      {#if hasAdSpend}
+        <polyline class="ad-line" points={adLinePoints} style:opacity={mounted ? 1 : 0} />
+        {#each bars as b}
+          <circle class="ad-dot" cx={b.cx} cy={yFor(b.adSpend)} r="3" style:opacity={mounted ? 1 : 0} />
+        {/each}
+      {/if}
       {#each bars as b, i}
         <rect
           class="hit-area"
+          role="presentation"
           x={padding.left + slot * i}
           y="0"
           width={slot}
@@ -83,6 +93,9 @@
             {formatCurrency(hovered.netProfit)}
           </span>
         </div>
+        {#if hasAdSpend}
+          <div class="tooltip-row"><span>광고비</span><span class="font-mono">{formatCurrency(hovered.adSpend)}</span></div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -94,6 +107,9 @@
   <div class="trend-legend">
     <span class="legend-item"><i class="dot dot-bar"></i>매출</span>
     <span class="legend-item"><i class="dot dot-line"></i>순수익</span>
+    {#if hasAdSpend}
+      <span class="legend-item"><i class="dot dot-ad"></i>광고비</span>
+    {/if}
   </div>
 </div>
 
@@ -181,6 +197,21 @@
     transition: opacity var(--duration-slow) var(--ease-out);
   }
 
+  .ad-line {
+    fill: none;
+    stroke: var(--warning);
+    stroke-width: 2;
+    stroke-dasharray: 4 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: opacity var(--duration-slow) var(--ease-out);
+  }
+
+  .ad-dot {
+    fill: var(--warning);
+    transition: opacity var(--duration-slow) var(--ease-out);
+  }
+
   .trend-labels {
     display: flex;
     justify-content: space-between;
@@ -210,4 +241,5 @@
   }
   .dot-bar { background: var(--accent); }
   .dot-line { background: var(--positive); }
+  .dot-ad { background: var(--warning); }
 </style>

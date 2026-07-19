@@ -6,7 +6,8 @@
   let {
     label,
     value = 0,
-    format = 'currency', // 'currency' | 'percent' | 'count'
+    format = 'currency', // 'currency' | 'percent' | 'count' | 'ratio'
+    unavailable = false,
     deltaPercent = null,
     deltaUnit = '%',
     deltaLabel = '전월 대비',
@@ -15,13 +16,14 @@
   const display = tweened(0, { duration: 700, easing: cubicOut });
 
   $effect(() => {
-    display.set(value);
+    display.set(unavailable ? 0 : value);
   });
 
   /** @param {number} v */
   function formatValue(v) {
     if (format === 'percent') return formatPercent(v);
     if (format === 'count') return `${formatNumber(Math.round(v))}건`;
+    if (format === 'ratio') return `${v.toFixed(1)}x`;
     return formatCurrency(Math.round(v));
   }
 
@@ -30,8 +32,8 @@
 
 <div class="kpi-card">
   <span class="kpi-label">{label}</span>
-  <span class="kpi-value">{formatValue($display)}</span>
-  {#if deltaPercent !== null}
+  <span class="kpi-value">{unavailable ? '—' : formatValue($display)}</span>
+  {#if !unavailable && deltaPercent !== null}
     <span class="kpi-delta" class:positive={deltaPositive} class:negative={!deltaPositive}>
       {deltaPositive ? '▲' : '▼'} {deltaLabel} {formatPercent(Math.abs(deltaPercent)).replace('%', '')}{deltaUnit}
     </span>

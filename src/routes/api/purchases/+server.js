@@ -20,11 +20,19 @@ export async function GET({ url }) {
 
   if (start && end) {
     rows = await sql`
-      SELECT * FROM purchases WHERE date >= ${start} AND date <= ${end}
-      ORDER BY date DESC
+      SELECT p.*, COALESCE(s.category, '기타') AS category
+      FROM purchases p
+      LEFT JOIN suppliers s ON s.name = p.supplier
+      WHERE p.date >= ${start} AND p.date <= ${end}
+      ORDER BY p.date DESC
     `;
   } else {
-    rows = await sql`SELECT * FROM purchases ORDER BY date DESC`;
+    rows = await sql`
+      SELECT p.*, COALESCE(s.category, '기타') AS category
+      FROM purchases p
+      LEFT JOIN suppliers s ON s.name = p.supplier
+      ORDER BY p.date DESC
+    `;
   }
 
   return json(rows);

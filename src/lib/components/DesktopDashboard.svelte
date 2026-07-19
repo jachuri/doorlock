@@ -48,9 +48,9 @@
   let currentMonthKey = $derived(monthKeys[monthKeys.length - 1]);
 
   let monthlyBuckets = $derived.by(() => {
-    /** @type {Map<string, { key: string, label: string, sales: number, parts: number, purchase: number, count: number }>} */
+    /** @type {Map<string, { key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, count: number }>} */
     const map = new Map(
-      monthKeys.map((k) => [k, { key: k, label: monthLabel(k), sales: 0, parts: 0, purchase: 0, count: 0 }])
+      monthKeys.map((k) => [k, { key: k, label: monthLabel(k), sales: 0, parts: 0, purchase: 0, adSpend: 0, count: 0 }])
     );
     for (const s of services) {
       const b = map.get(s.date.slice(0, 7));
@@ -63,11 +63,19 @@
       const b = map.get(p.date.slice(0, 7));
       if (!b) continue;
       b.purchase += p.amount;
+      if (p.category === '광고') b.adSpend += p.amount;
     }
     return monthKeys.map((k) => {
-      const b = /** @type {{ key: string, label: string, sales: number, parts: number, purchase: number, count: number }} */ (map.get(k));
+      const b = /** @type {{ key: string, label: string, sales: number, parts: number, purchase: number, adSpend: number, count: number }} */ (map.get(k));
       const netProfit = b.sales - b.parts - b.purchase;
-      return { ...b, netProfit, margin: b.sales > 0 ? (netProfit / b.sales) * 100 : 0 };
+      return {
+        ...b,
+        netProfit,
+        margin: b.sales > 0 ? (netProfit / b.sales) * 100 : 0,
+        salesMargin: b.sales > 0 ? ((b.sales - b.parts) / b.sales) * 100 : 0,
+        adSpendRatio: b.sales > 0 ? (b.adSpend / b.sales) * 100 : 0,
+        roas: b.adSpend > 0 ? b.sales / b.adSpend : null,
+      };
     });
   });
 
@@ -86,7 +94,14 @@
   let salesGrowth = $derived(prevMonth ? growth(currentMonth.sales, prevMonth.sales) : null);
   let profitGrowth = $derived(prevMonth ? growth(currentMonth.netProfit, prevMonth.netProfit) : null);
   let countGrowth = $derived(prevMonth ? growth(currentMonth.count, prevMonth.count) : null);
-  let marginDelta = $derived(prevMonth ? currentMonth.margin - prevMonth.margin : null);
+  let opMarginDelta = $derived(prevMonth ? currentMonth.margin - prevMonth.margin : null);
+  let salesMarginDelta = $derived(prevMonth ? currentMonth.salesMargin - prevMonth.salesMargin : null);
+  let adSpendRatioDelta = $derived(prevMonth ? currentMonth.adSpendRatio - prevMonth.adSpendRatio : null);
+  let roasGrowth = $derived(
+    prevMonth && currentMonth.roas !== null && prevMonth.roas !== null
+      ? growth(currentMonth.roas, prevMonth.roas)
+      : null
+  );
 
   // 이번달 일별 매출
   let dailySales = $derived.by(() => {
@@ -124,6 +139,17 @@
     const rest = sorted.slice(5).reduce((s, i) => s + i.value, 0);
     return [...sorted.slice(0, 5), { label: '기타', value: rest }];
   });
+
+  // 이번달 매입 카테고리별 비중
+  let categoryBreakdown = $derived.by(() => {
+    const map = new Map();
+    for (const p of purchases) {
+      if (!p.date.startsWith(currentMonthKey)) continue;
+      const key = p.category || '기타';
+      map.set(key, (map.get(key) || 0) + p.amount);
+    }
+    return [...map.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+  });
 </script>
 
 <div class="page report-page">
@@ -144,13 +170,22 @@
     <section class="kpi-grid">
       <KpiCard label="이번달 매출" value={currentMonth.sales} format="currency" deltaPercent={salesGrowth} />
       <KpiCard label="순수익" value={currentMonth.netProfit} format="currency" deltaPercent={profitGrowth} />
-      <KpiCard label="마진율" value={currentMonth.margin} format="percent" deltaPercent={marginDelta} deltaUnit="%p" />
       <KpiCard label="처리 건수" value={currentMonth.count} format="count" deltaPercent={countGrowth} />
+      <KpiCard label="판매마진" value={currentMonth.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" />
+      <KpiCard label="운영마진" value={currentMonth.margin} format="percent" deltaPercent={opMarginDelta} deltaUnit="%p" />
+      <KpiCard
+        label="ROAS"
+        value={currentMonth.roas ?? 0}
+        unavailable={currentMonth.roas === null}
+        format="ratio"
+        deltaPercent={roasGrowth}
+      />
+      <KpiCard label="광고비 비중" value={currentMonth.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" />
     </section>
 
     <section class="report-section card">
       <h2 class="section-title">월별 성장 추이 (최근 6개월)</h2>
-      <TrendChart data={monthlyBuckets.map((b) => ({ label: b.label, sales: b.sales, netProfit: b.netProfit }))} />
+      <TrendChart data={monthlyBuckets.map((b) => ({ label: b.label, sales: b.sales, netProfit: b.netProfit, adSpend: b.adSpend }))} />
     </section>
 
     <div class="report-row">
@@ -169,14 +204,25 @@
       </section>
     </div>
 
-    <section class="report-section card">
-      <h2 class="section-title">매입처 TOP 5</h2>
-      {#if supplierBreakdown.length === 0}
-        <p class="empty-hint">이번달 매입 기록이 없습니다</p>
-      {:else}
-        <ShareBars items={supplierBreakdown} />
-      {/if}
-    </section>
+    <div class="report-row">
+      <section class="report-section card">
+        <h2 class="section-title">매입처 TOP 5</h2>
+        {#if supplierBreakdown.length === 0}
+          <p class="empty-hint">이번달 매입 기록이 없습니다</p>
+        {:else}
+          <ShareBars items={supplierBreakdown} />
+        {/if}
+      </section>
+
+      <section class="report-section card">
+        <h2 class="section-title">카테고리별 매입 비중</h2>
+        {#if categoryBreakdown.length === 0}
+          <p class="empty-hint">이번달 매입 기록이 없습니다</p>
+        {:else}
+          <ShareBars items={categoryBreakdown} />
+        {/if}
+      </section>
+    </div>
   {/if}
 </div>
 
@@ -214,7 +260,7 @@
 
   .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     gap: var(--space-4);
   }
 
@@ -261,7 +307,6 @@
   }
 
   @media (max-width: 1240px) {
-    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .report-row { grid-template-columns: 1fr; }
   }
 </style>

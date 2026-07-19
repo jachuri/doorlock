@@ -61,6 +61,7 @@
       {#each points as p, i}
         <rect
           class="hit-area"
+          role="presentation"
           x={padding.left + (chartW * i) / data.length}
           y="0"
           width={chartW / data.length}
