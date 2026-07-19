@@ -222,9 +222,9 @@
       <div class="kpi-row kpi-row-2">
         <KpiCard
           label="ROAS"
-          value={currentMonth.roas ?? 0}
+          value={(currentMonth.roas ?? 0) * 100}
           unavailable={currentMonth.roas === null}
-          format="ratio"
+          format="percent"
           deltaPercent={roasGrowth}
         />
         <KpiCard label="광고비 비중" value={currentMonth.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" />
