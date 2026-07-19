@@ -1111,18 +1111,16 @@
     flex-shrink: 0;
   }
 
-  /* 순수익이 한눈에 보는 결론 — 크고 굵게. 매출/매입은 그걸 뒷받침하는
-     작은 보조 지표 (달력 모드 색상 규칙: 매출=파랑/매입=회색/순수익=녹적) */
+  /* 순수익이 한눈에 보는 결론, 매출/매입은 보조 지표
+     (달력 모드 색상 규칙: 매출=파랑/매입=회색/순수익=녹적) — 폰트 크기는 기존 그대로 */
   .daily-sales {
     font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     color: var(--accent-text);
   }
   .daily-sales.text-negative {
     color: var(--negative);
-    font-size: var(--text-lg);
-    font-weight: var(--weight-semibold);
   }
 
   .daily-purchase {
@@ -1133,8 +1131,7 @@
 
   .daily-profit {
     font-family: var(--font-mono);
-    font-size: var(--text-lg);
-    font-weight: var(--weight-semibold);
+    font-size: var(--text-xs);
   }
 
   .positive { color: var(--positive); }
