@@ -1355,8 +1355,8 @@
 
     .daily-list {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: var(--space-3);
+      grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+      gap: var(--space-4);
       align-items: start;
     }
     .daily-item {
@@ -1366,31 +1366,31 @@
       overflow: hidden;
     }
     .daily-item:last-child { border-bottom: 1px solid var(--border-subtle); }
-    .daily-header { padding: var(--space-4) var(--space-5); }
-    .daily-detail { padding: 0 var(--space-5) var(--space-4); }
+    .daily-header { padding: var(--space-5) var(--space-6); }
+    .daily-detail { padding: 0 var(--space-6) var(--space-5); }
 
     .daily-date {
-      font-size: var(--text-lg);
-      font-weight: var(--weight-semibold);
+      font-size: var(--text-xl);
+      font-weight: var(--weight-bold);
     }
     .daily-meta {
-      font-size: var(--text-sm);
+      font-size: var(--text-base);
     }
     .daily-sales {
-      font-size: var(--text-xl);
-      font-weight: var(--weight-semibold);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-bold);
     }
     .daily-profit {
-      font-size: var(--text-base);
+      font-size: var(--text-lg);
     }
 
     .detail-row {
-      grid-template-columns: 64px 84px 1fr auto 22px;
-      font-size: var(--text-sm);
+      grid-template-columns: 68px 92px 1fr auto 24px;
+      font-size: var(--text-base);
       padding: var(--space-3) var(--space-2);
     }
     .detail-amount {
-      font-size: var(--text-base);
+      font-size: var(--text-lg);
     }
 
     .calendar-grid {
