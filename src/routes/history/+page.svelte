@@ -169,8 +169,8 @@
     return cells;
   });
 
-  // 펼치기 상태
-  let expandedDate = $state('');
+  // 펼치기 상태 (리스트 모드 — 여러 날짜 동시에 펼칠 수 있음)
+  let expandedDates = $state(/** @type {Set<string>} */ (new Set()));
 
   onMount(() => {
     updateRange('month');
@@ -230,8 +230,20 @@
     }
   }
 
+  /** @param {string} date */
   function toggleExpand(date) {
-    expandedDate = expandedDate === date ? '' : date;
+    const next = new Set(expandedDates);
+    if (next.has(date)) next.delete(date);
+    else next.add(date);
+    expandedDates = next;
+  }
+
+  function expandAll() {
+    expandedDates = new Set(filteredDailySummaries.map((d) => d.date));
+  }
+
+  function collapseAll() {
+    expandedDates = new Set();
   }
 
   function toggleCalendarExpand(date) {
@@ -516,6 +528,10 @@
         <p>선택한 기간에 데이터가 없습니다</p>
       </div>
       {:else}
+      <div class="expand-controls">
+        <button type="button" class="btn btn-ghost btn-sm" onclick={expandAll}>전체펼치기</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={collapseAll}>전체접기</button>
+      </div>
       <!-- 일별 리스트 -->
       <ul class="daily-list">
         {#each filteredDailySummaries as day}
@@ -538,10 +554,10 @@
                   </span>
                 {/if}
               </div>
-              <svg class="expand-icon" class:expanded={expandedDate === day.date} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="expand-icon" class:expanded={expandedDates.has(day.date)} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
 
-            {#if expandedDate === day.date}
+            {#if expandedDates.has(day.date)}
               <div class="daily-detail">
                 {#if typeFilter !== 'purchase'}
                   {#each day.services as s}
@@ -1246,6 +1262,11 @@
   .btn-sm {
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-xs);
+  }
+  .expand-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
   }
   .row-2 {
     display: grid;
