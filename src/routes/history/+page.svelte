@@ -530,6 +530,9 @@
                   <span class="daily-sales text-negative">-{formatCurrency(day.purchase)}</span>
                 {:else}
                   <span class="daily-sales">{formatCurrency(day.sales)}</span>
+                  {#if day.purchase > 0}
+                    <span class="daily-purchase">-{formatCurrency(day.purchase)}</span>
+                  {/if}
                   <span class="daily-profit" class:positive={day.netProfit >= 0} class:negative={day.netProfit < 0}>
                     {formatCurrency(day.netProfit)}
                   </span>
@@ -1119,6 +1122,10 @@
     font-size: var(--text-xs);
   }
 
+  .daily-purchase {
+    display: none;
+  }
+
   .positive { color: var(--positive); }
   .negative { color: var(--negative); }
 
@@ -1370,18 +1377,37 @@
     .daily-detail { padding: 0 var(--space-6) var(--space-5); }
 
     .daily-date {
-      font-size: var(--text-xl);
-      font-weight: var(--weight-bold);
+      font-size: var(--text-lg);
+      font-weight: var(--weight-semibold);
     }
     .daily-meta {
-      font-size: var(--text-base);
+      font-size: var(--text-sm);
+    }
+
+    /* 순수익(daily-profit)이 한눈에 보이는 결론이고, 매출/매입은 그걸 뒷받침하는
+       작은 보조 지표 — 달력 모드 색상 규칙(매출=파랑/매입=회색/순수익=녹적)과 통일 */
+    .daily-right {
+      gap: var(--space-1);
     }
     .daily-sales {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--accent-text);
+    }
+    .daily-sales.text-negative {
+      color: var(--negative);
       font-size: var(--text-2xl);
       font-weight: var(--weight-bold);
     }
+    .daily-purchase {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--text-tertiary);
+    }
     .daily-profit {
-      font-size: var(--text-lg);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-bold);
     }
 
     .detail-row {
