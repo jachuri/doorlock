@@ -1088,7 +1088,7 @@
   .daily-left {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: 2px;
     flex: 1;
     min-width: 0;
   }
@@ -1107,15 +1107,15 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: var(--space-1);
+    gap: 2px;
     flex-shrink: 0;
   }
 
   /* 순수익이 한눈에 보는 결론, 매출/매입은 보조 지표
-     (달력 모드 색상 규칙: 매출=파랑/매입=회색/순수익=녹적) — 폰트 크기는 기존 그대로 */
+     (달력 모드 색상 규칙: 매출=파랑/매입=회색/순수익=녹적) */
   .daily-sales {
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     font-weight: var(--weight-medium);
     color: var(--accent-text);
   }
@@ -1131,7 +1131,7 @@
 
   .daily-profit {
     font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
   }
 
   .positive { color: var(--positive); }
