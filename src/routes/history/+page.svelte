@@ -1394,8 +1394,30 @@
       font-size: 12px;
     }
 
+    .summary-footer {
+      position: static;
+      max-width: none;
+      width: auto;
+      transform: none;
+      margin-top: var(--space-2);
+      border-top: none;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5) var(--space-6);
+    }
+
     .summary-grid {
       grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-4);
+    }
+
+    .summary-cell .metric-label {
+      font-size: var(--text-sm);
+    }
+
+    .metric-value-sm {
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-bold);
     }
   }
 </style>
