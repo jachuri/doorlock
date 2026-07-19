@@ -1369,6 +1369,30 @@
     .daily-header { padding: var(--space-4) var(--space-5); }
     .daily-detail { padding: 0 var(--space-5) var(--space-4); }
 
+    .daily-date {
+      font-size: var(--text-lg);
+      font-weight: var(--weight-semibold);
+    }
+    .daily-meta {
+      font-size: var(--text-sm);
+    }
+    .daily-sales {
+      font-size: var(--text-xl);
+      font-weight: var(--weight-semibold);
+    }
+    .daily-profit {
+      font-size: var(--text-base);
+    }
+
+    .detail-row {
+      grid-template-columns: 64px 84px 1fr auto 22px;
+      font-size: var(--text-sm);
+      padding: var(--space-3) var(--space-2);
+    }
+    .detail-amount {
+      font-size: var(--text-base);
+    }
+
     .calendar-grid {
       grid-auto-rows: minmax(132px, auto);
       gap: 6px;
