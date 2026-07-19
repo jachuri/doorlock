@@ -87,7 +87,7 @@
   </header>
 
   <!-- 데이터 관리 -->
-  <section class="section">
+  <section class="section section-data">
     <h2 class="section-title">데이터 관리</h2>
 
     <div class="setting-list">
@@ -129,7 +129,7 @@
   </section>
 
   <!-- 정보 -->
-  <section class="section">
+  <section class="section section-info">
     <h2 class="section-title">정보</h2>
     <div class="info-card card">
       <div class="info-row">
@@ -147,7 +147,7 @@
     </div>
   </section>
 
-  <section class="section">
+  <section class="section section-tip">
     <div class="tip-card card">
       <p class="tip-title">💡 안내</p>
       <p class="tip-text">
@@ -283,4 +283,36 @@
   }
 
   .text-positive { color: var(--positive); }
+
+  /* ─── 데스크톱 ─── */
+  @media (min-width: 1024px) {
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: start;
+      column-gap: var(--space-6);
+      row-gap: var(--space-6);
+    }
+    .page-header {
+      grid-column: 1 / -1;
+    }
+    .page-header h1 {
+      font-size: var(--text-2xl);
+    }
+    .section-data {
+      grid-column: 1;
+      grid-row: 1 / 3;
+    }
+    .section-info {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .section-tip {
+      grid-column: 2;
+      grid-row: 2;
+    }
+  }
 </style>

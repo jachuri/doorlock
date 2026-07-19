@@ -1113,4 +1113,49 @@
 
   input[type="date"],
   input[type="time"] { color-scheme: dark; }
+
+  /* ─── 데스크톱 ─── */
+  @media (min-width: 1024px) {
+    .page-header h1 {
+      font-size: var(--text-2xl);
+    }
+
+    .daily-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: var(--space-3);
+      align-items: start;
+    }
+    .daily-item {
+      background: var(--bg-raised);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .daily-item:last-child { border-bottom: 1px solid var(--border-subtle); }
+    .daily-header { padding: var(--space-4) var(--space-5); }
+    .daily-detail { padding: 0 var(--space-5) var(--space-4); }
+
+    .calendar-grid {
+      grid-auto-rows: minmax(112px, auto);
+      gap: 4px;
+    }
+    .calendar-day { font-size: var(--text-sm); }
+    .calendar-sales,
+    .calendar-purchase {
+      font-size: 11px;
+      transform: scaleX(0.92);
+    }
+    .calendar-amount {
+      font-size: 16px;
+      transform: scaleX(0.9);
+    }
+    .calendar-count {
+      font-size: 10px;
+    }
+
+    .summary-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
 </style>

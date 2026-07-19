@@ -95,6 +95,42 @@ export async function getSupplierList() {
   return res.json();
 }
 
+// ─── 매입처 관리 (카테고리/병합) ───
+
+/** 매입처 목록 조회 (카테고리 + 매입 건수/합계 포함) */
+export async function getSuppliers() {
+  const res = await fetch('/api/suppliers');
+  return res.json();
+}
+
+/** 매입처 수동 등록 */
+export async function addSupplier(data) {
+  const res = await fetch('/api/suppliers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+/** 매입처 이름/카테고리 수정 (이름이 기존 매입처와 겹치면 병합) */
+export async function updateSupplier(id, data) {
+  const res = await fetch(`/api/suppliers/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+/** 매입처 삭제 (매입 이력이 없는 경우만 가능) */
+export async function deleteSupplier(id) {
+  const res = await fetch(`/api/suppliers/${id}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+}
+
 // ─── 백업/복원 ───
 
 /** 전체 데이터 백업 (JSON) */

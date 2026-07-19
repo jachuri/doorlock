@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { formatCurrency } from '$lib/utils.js';
 
   let { data = [], height = 220 } = $props();
 
@@ -28,6 +29,7 @@
       const y1 = yFor(d.sales);
       return {
         label: d.label,
+        sales: d.sales,
         netProfit: d.netProfit,
         cx,
         x: cx - barWidth / 2,
@@ -43,19 +45,47 @@
   onMount(() => {
     mounted = true;
   });
+
+  let hoveredIndex = $state(/** @type {number | null} */ (null));
+  let hovered = $derived(hoveredIndex !== null ? bars[hoveredIndex] : null);
 </script>
 
 <div class="trend-chart">
-  <svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" role="img" aria-label="월별 매출·순수익 추이">
-    <line class="zero-line" x1={padding.left} x2={width - padding.right} y1={zeroY} y2={zeroY} />
-    {#each bars as b}
-      <rect class="bar" x={b.x} width={barWidth} y={mounted ? b.y : zeroY} height={mounted ? b.h : 0} />
-    {/each}
-    <polyline class="profit-line" points={linePoints} style:opacity={mounted ? 1 : 0} />
-    {#each bars as b}
-      <circle class="profit-dot" cx={b.cx} cy={yFor(b.netProfit)} r="3.5" style:opacity={mounted ? 1 : 0} />
-    {/each}
-  </svg>
+  <div class="chart-area">
+    <svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" role="img" aria-label="월별 매출·순수익 추이">
+      <line class="zero-line" x1={padding.left} x2={width - padding.right} y1={zeroY} y2={zeroY} />
+      {#each bars as b}
+        <rect class="bar" x={b.x} width={barWidth} y={mounted ? b.y : zeroY} height={mounted ? b.h : 0} />
+      {/each}
+      <polyline class="profit-line" points={linePoints} style:opacity={mounted ? 1 : 0} />
+      {#each bars as b}
+        <circle class="profit-dot" cx={b.cx} cy={yFor(b.netProfit)} r="3.5" style:opacity={mounted ? 1 : 0} />
+      {/each}
+      {#each bars as b, i}
+        <rect
+          class="hit-area"
+          x={padding.left + slot * i}
+          y="0"
+          width={slot}
+          height={height}
+          onmouseenter={() => (hoveredIndex = i)}
+          onmouseleave={() => (hoveredIndex = null)}
+        />
+      {/each}
+    </svg>
+    {#if hovered}
+      <div class="chart-tooltip" style:left="{(hovered.cx / width) * 100}%">
+        <div class="tooltip-label">{hovered.label}</div>
+        <div class="tooltip-row"><span>매출</span><span class="font-mono">{formatCurrency(hovered.sales)}</span></div>
+        <div class="tooltip-row">
+          <span>순수익</span>
+          <span class="font-mono" class:positive={hovered.netProfit >= 0} class:negative={hovered.netProfit < 0}>
+            {formatCurrency(hovered.netProfit)}
+          </span>
+        </div>
+      </div>
+    {/if}
+  </div>
   <div class="trend-labels">
     {#each data as d}
       <span>{d.label}</span>
@@ -74,12 +104,55 @@
     gap: var(--space-3);
   }
 
+  .chart-area {
+    position: relative;
+  }
+
   svg {
     width: 100%;
     height: auto;
     display: block;
     overflow: visible;
   }
+
+  .hit-area {
+    fill: transparent;
+    cursor: pointer;
+  }
+
+  .chart-tooltip {
+    position: absolute;
+    top: 0;
+    transform: translate(-50%, -100%) translateY(-8px);
+    min-width: 140px;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .tooltip-label {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-2);
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+  .tooltip-row .font-mono {
+    color: var(--text-primary);
+  }
+  .tooltip-row .positive { color: var(--positive); }
+  .tooltip-row .negative { color: var(--negative); }
 
   .zero-line {
     stroke: var(--border-default);

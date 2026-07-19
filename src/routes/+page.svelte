@@ -2,6 +2,8 @@
   import { afterNavigate } from '$app/navigation';
   import { getServicesByDate, getServicesByDateRange, getPurchasesByDateRange } from '$lib/db.js';
   import { formatDate, formatDateDisplay, formatCurrency, formatPercent, formatMonth } from '$lib/utils.js';
+  import { viewport } from '$lib/viewport.svelte.js';
+  import DesktopDashboard from '$lib/components/DesktopDashboard.svelte';
 
   let today = formatDate();
   let selectedDate = $state(today);
@@ -36,7 +38,8 @@
   let monthlyCount = $derived(monthlyServices.length);
 
   afterNavigate(() => {
-    loadData();
+    // 데스크톱은 DesktopDashboard가 자체적으로 데이터를 불러오므로 여기서는 생략
+    if (!viewport.isDesktop) loadData();
   });
 
   async function loadData() {
@@ -115,6 +118,9 @@
   <title>도어락 장부</title>
 </svelte:head>
 
+{#if viewport.isDesktop}
+  <DesktopDashboard />
+{:else}
 <div class="page">
   <header class="page-header">
     <h1>도어락 장부</h1>
@@ -240,6 +246,7 @@
     </section>
   {/if}
 </div>
+{/if}
 
 <style>
   .page {

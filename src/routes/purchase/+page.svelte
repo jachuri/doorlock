@@ -188,7 +188,7 @@
     {/if}
 
     <!-- 날짜별 매입 내역 -->
-    <section class="section">
+    <section class="section records-section">
       <h2 class="section-title">매입 내역</h2>
       {#each [...groupedByDate] as [dateKey, records]}
         <div class="date-group">
@@ -558,4 +558,30 @@
   }
 
   input[type="date"] { color-scheme: dark; }
+
+  /* ─── 데스크톱 ─── */
+  @media (min-width: 1024px) {
+    .page-header h1 {
+      font-size: var(--text-2xl);
+    }
+
+    .records-section {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: var(--space-4);
+      align-items: start;
+    }
+    .records-section .section-title {
+      grid-column: 1 / -1;
+    }
+    .date-group {
+      background: var(--bg-raised);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4) var(--space-5);
+    }
+    .date-group-header {
+      padding-top: 0;
+    }
+  }
 </style>

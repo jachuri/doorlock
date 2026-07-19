@@ -299,4 +299,22 @@
   input[type="time"] {
     color-scheme: dark;
   }
+
+  /* ─── 데스크톱 ─── */
+  @media (min-width: 1024px) {
+    .page-header {
+      max-width: 560px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .page-header h1 {
+      font-size: var(--text-2xl);
+    }
+    .form {
+      max-width: 560px;
+      margin: 0 auto;
+      width: 100%;
+      gap: var(--space-6);
+    }
+  }
 </style>

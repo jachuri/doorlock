@@ -1,8 +1,7 @@
 <script>
   import '../app.css';
   import { page } from '$app/stores';
-  import { onMount } from 'svelte';
-  import { browser } from '$app/environment';
+  import { viewport } from '$lib/viewport.svelte.js';
 
   let { children } = $props();
 
@@ -15,25 +14,14 @@
   ];
 
   // 사이드바(데스크톱)에만 노출 — 하단 네비(모바일)는 기존 5개 항목 그대로 유지
+  // 대시보드가 곧 리포트 화면이므로 별도 "리포트" 메뉴는 없음
   const desktopNavItems = [
     ...navItems.slice(0, 3),
-    { href: '/report', label: '리포트', icon: 'report' },
+    { href: '/suppliers', label: '매입처', icon: 'suppliers' },
     ...navItems.slice(3),
   ];
 
   let isLoginPage = $derived($page.url.pathname === '/login');
-
-  // PC/모바일 판별은 기기 종류가 아니라 뷰포트 폭 기준
-  let isDesktop = $state(false);
-
-  onMount(() => {
-    if (!browser) return;
-    const mq = window.matchMedia('(min-width: 1024px)');
-    isDesktop = mq.matches;
-    const handler = (/** @type {MediaQueryListEvent} */ e) => { isDesktop = e.matches; };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  });
 
   /**
    * @param {string} href
@@ -77,18 +65,17 @@
       <circle cx="12" cy="12" r="3"/>
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
     </svg>
-  {:else if icon === 'report'}
+  {:else if icon === 'suppliers'}
     <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="6" y1="20" x2="6" y2="15"/>
-      <line x1="12" y1="20" x2="12" y2="10"/>
-      <line x1="18" y1="20" x2="18" y2="4"/>
+      <path d="M20.59 13.41L11 3.83A2 2 0 009.59 3H4a1 1 0 00-1 1v5.59a2 2 0 00.59 1.41l9.58 9.58a2 2 0 002.82 0l4.6-4.6a2 2 0 000-2.82z"/>
+      <circle cx="7.5" cy="7.5" r="1.3"/>
     </svg>
   {/if}
 {/snippet}
 
 {#if isLoginPage}
   {@render children()}
-{:else if isDesktop}
+{:else if viewport.isDesktop}
   <div class="app-shell-desktop">
     <aside class="sidebar" aria-label="메인 네비게이션">
       <div class="sidebar-brand">도어락 장부</div>

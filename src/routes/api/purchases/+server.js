@@ -8,12 +8,12 @@ export async function GET({ url }) {
   const end = url.searchParams.get('end');
   const suppliers = url.searchParams.get('suppliers');
 
-  // 매입처 목록 요청
+  // 매입처 목록 요청 (마스터 목록 — 카테고리 관리 화면에서 이름을 고치면 여기도 반영됨)
   if (suppliers !== null) {
     const rows = await sql`
-      SELECT DISTINCT supplier FROM purchases ORDER BY supplier ASC
+      SELECT name FROM suppliers ORDER BY name ASC
     `;
-    return json(rows.map(r => r.supplier));
+    return json(rows.map(r => r.name));
   }
 
   let rows;
@@ -40,6 +40,9 @@ export async function POST({ request }) {
     VALUES (${date}, ${supplier}, ${amount}, ${memo || ''})
     RETURNING id
   `;
+
+  // 새 매입처면 마스터 목록에 '기타'로 자동 등록
+  await sql`INSERT INTO suppliers (name) VALUES (${supplier}) ON CONFLICT (name) DO NOTHING`;
 
   return json({ success: true, id: rows[0].id });
 }

@@ -16,6 +16,9 @@ export async function PUT({ params, request }) {
     WHERE id = ${id}
   `;
 
+  // 새 매입처면 마스터 목록에 '기타'로 자동 등록
+  await sql`INSERT INTO suppliers (name) VALUES (${supplier}) ON CONFLICT (name) DO NOTHING`;
+
   return json({ success: true });
 }
 

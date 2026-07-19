@@ -126,14 +126,10 @@
   });
 </script>
 
-<svelte:head>
-  <title>월간 리포트 · 도어락 장부</title>
-</svelte:head>
-
 <div class="page report-page">
   <header class="report-header">
     <div>
-      <h1>월간 리포트</h1>
+      <h1>대시보드</h1>
       <span class="report-sub">{formatMonth(now.getFullYear(), now.getMonth() + 1)} 기준</span>
     </div>
     <div class="report-actions">
@@ -186,7 +182,7 @@
 
 <style>
   .report-page {
-    padding: var(--space-6);
+    padding: var(--space-8);
     display: flex;
     flex-direction: column;
     gap: var(--space-6);
@@ -201,7 +197,7 @@
   }
 
   .report-header h1 {
-    font-size: var(--text-2xl);
+    font-size: var(--text-3xl);
     font-weight: var(--weight-bold);
     letter-spacing: -0.02em;
   }
@@ -264,7 +260,7 @@
     50% { opacity: 1; transform: scale(1); }
   }
 
-  @media (max-width: 900px) {
+  @media (max-width: 1240px) {
     .kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .report-row { grid-template-columns: 1fr; }
   }
