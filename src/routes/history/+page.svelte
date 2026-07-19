@@ -1325,8 +1325,8 @@
 
   .summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-2);
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3) var(--space-2);
     text-align: center;
   }
 
@@ -1340,6 +1340,7 @@
     font-size: var(--text-sm);
     font-weight: var(--weight-semibold);
     letter-spacing: -0.02em;
+    white-space: nowrap;
   }
 
   /* 로딩/빈 */
