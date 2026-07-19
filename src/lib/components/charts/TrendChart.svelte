@@ -163,6 +163,7 @@
     gap: var(--space-3);
     font-size: var(--text-xs);
     color: var(--text-tertiary);
+    white-space: nowrap;
   }
   .tooltip-row .font-mono {
     color: var(--text-primary);
