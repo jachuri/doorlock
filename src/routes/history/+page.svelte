@@ -1091,7 +1091,7 @@
     display: flex;
     align-items: center;
     width: 100%;
-    padding: var(--space-4) 0;
+    padding: var(--space-3) 0;
     background: none;
     border: none;
     color: inherit;
@@ -1183,7 +1183,7 @@
     align-items: center;
     font-size: var(--text-xs);
     color: var(--text-secondary);
-    padding: var(--space-2) var(--space-1);
+    padding: var(--space-1) var(--space-1);
   }
 
   .detail-row-btn {
@@ -1404,11 +1404,11 @@
       overflow: hidden;
     }
     .daily-item:last-child { border-bottom: 1px solid var(--border-subtle); }
-    .daily-header { padding: var(--space-5) var(--space-6); }
-    .daily-detail { padding: 0 var(--space-6) var(--space-5); }
+    .daily-header { padding: var(--space-4) var(--space-6); }
+    .daily-detail { padding: 0 var(--space-6) var(--space-4); }
 
     .daily-left {
-      gap: var(--space-2);
+      gap: var(--space-1);
     }
     .daily-date {
       font-size: var(--text-lg);
@@ -1421,7 +1421,7 @@
     /* 순수익(daily-profit)이 한눈에 보이는 결론이고, 매출/매입은 그걸 뒷받침하는
        작은 보조 지표 — 달력 모드 색상 규칙(매출=파랑/매입=회색/순수익=녹적)과 통일 */
     .daily-right {
-      gap: var(--space-1);
+      gap: 2px;
     }
     .daily-sales {
       font-size: var(--text-sm);
@@ -1447,7 +1447,7 @@
     .detail-row {
       grid-template-columns: 68px 92px 1fr auto 24px;
       font-size: var(--text-base);
-      padding: var(--space-3) var(--space-2);
+      padding: var(--space-2) var(--space-2);
     }
     .detail-amount {
       font-size: var(--text-lg);
