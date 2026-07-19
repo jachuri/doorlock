@@ -5,6 +5,7 @@
     updatePurchase, deletePurchase, getSupplierList
   } from '$lib/db.js';
   import { exportToExcel } from '$lib/excel.js';
+  import ShareBars from '$lib/components/charts/ShareBars.svelte';
   import {
     formatDate, formatDateDisplay, formatCurrency, formatPercent, formatNumber,
     formatAmountInput, parseAmount,
@@ -19,10 +20,17 @@
     { key: 'custom', label: '직접선택' },
   ];
 
+  const TYPE_FILTERS = [
+    { key: 'all', label: '전체' },
+    { key: 'service', label: '매출' },
+    { key: 'purchase', label: '매입' },
+  ];
+
   const PAYMENT_METHODS = ['현금', '카드', '계좌이체'];
   const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
   let viewMode = $state('list'); // 'list' | 'calendar'
+  let typeFilter = $state('all'); // 'all' | 'service' | 'purchase' — 리스트 모드 전용
 
   let selectedPeriod = $state('month');
   let startDate = $state('');
@@ -102,6 +110,32 @@
     return [...map.entries()]
       .map(([date, data]) => ({ date, ...data }))
       .sort((a, b) => b.date.localeCompare(a.date));
+  });
+
+  // 유형 필터 적용 (리스트 모드 전용) — 매출/매입 중 하나만 볼 때는 해당 항목이 없는 날은 제외
+  let filteredDailySummaries = $derived.by(() => {
+    if (typeFilter === 'service') return dailySummaries.filter((d) => d.services.length > 0);
+    if (typeFilter === 'purchase') return dailySummaries.filter((d) => d.purchases.length > 0);
+    return dailySummaries;
+  });
+
+  // 선택 기간 매입처별/카테고리별 지출 (매입 필터 전용)
+  let periodSupplierBreakdown = $derived.by(() => {
+    const map = new Map();
+    for (const p of purchases) {
+      const key = p.supplier || '기타';
+      map.set(key, (map.get(key) || 0) + p.amount);
+    }
+    return [...map.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+  });
+
+  let periodCategoryBreakdown = $derived.by(() => {
+    const map = new Map();
+    for (const p of purchases) {
+      const key = p.category || '기타';
+      map.set(key, (map.get(key) || 0) + p.amount);
+    }
+    return [...map.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
   });
 
   // 전체 집계 (리스트 모드)
@@ -447,58 +481,93 @@
       {:else}
         <p class="range-display">{formatDateDisplay(startDate)} ~ {formatDateDisplay(endDate)}</p>
       {/if}
+
+      <div class="chip-group">
+        {#each TYPE_FILTERS as t}
+          <button
+            class="chip"
+            class:active={typeFilter === t.key}
+            onclick={() => (typeFilter = t.key)}
+          >
+            {t.label}
+          </button>
+        {/each}
+      </div>
     </div>
 
     {#if loading}
       <div class="loading"><div class="loading-dot"></div></div>
-    {:else if dailySummaries.length === 0}
+    {:else}
+      {#if typeFilter === 'purchase' && purchases.length > 0}
+        <div class="breakdown-row">
+          <section class="breakdown-section card">
+            <h2 class="section-title">매입처별 지출</h2>
+            <ShareBars items={periodSupplierBreakdown} />
+          </section>
+          <section class="breakdown-section card">
+            <h2 class="section-title">카테고리별 지출</h2>
+            <ShareBars items={periodCategoryBreakdown} />
+          </section>
+        </div>
+      {/if}
+
+      {#if filteredDailySummaries.length === 0}
       <div class="empty-state">
         <p>선택한 기간에 데이터가 없습니다</p>
       </div>
-    {:else}
+      {:else}
       <!-- 일별 리스트 -->
       <ul class="daily-list">
-        {#each dailySummaries as day}
+        {#each filteredDailySummaries as day}
           <li class="daily-item">
             <button class="daily-header" onclick={() => toggleExpand(day.date)}>
               <div class="daily-left">
                 <span class="daily-date">{formatDateDisplay(day.date)}</span>
-                <span class="daily-meta">{day.count}건</span>
+                <span class="daily-meta">{typeFilter === 'purchase' ? day.purchases.length : day.count}건</span>
               </div>
               <div class="daily-right">
-                <span class="daily-sales">{formatCurrency(day.sales)}</span>
-                <span class="daily-profit" class:positive={day.netProfit >= 0} class:negative={day.netProfit < 0}>
-                  {formatCurrency(day.netProfit)}
-                </span>
+                {#if typeFilter === 'purchase'}
+                  <span class="daily-sales text-negative">-{formatCurrency(day.purchase)}</span>
+                {:else}
+                  <span class="daily-sales">{formatCurrency(day.sales)}</span>
+                  <span class="daily-profit" class:positive={day.netProfit >= 0} class:negative={day.netProfit < 0}>
+                    {formatCurrency(day.netProfit)}
+                  </span>
+                {/if}
               </div>
               <svg class="expand-icon" class:expanded={expandedDate === day.date} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
 
             {#if expandedDate === day.date}
               <div class="daily-detail">
-                {#each day.services as s}
-                  <button class="detail-row detail-row-btn" onclick={() => openEditModal(s)}>
-                    <span class="detail-time">{s.time || '--:--'}</span>
-                    <span class="detail-method">{s.paymentMethod}</span>
-                    <span class="detail-memo">{s.memo || ''}</span>
-                    <span class="detail-amount font-mono">{formatCurrency(s.amount)}</span>
-                    <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  </button>
-                {/each}
-                {#each day.purchases as p, i}
-                  <button class="detail-row detail-row-btn" class:purchase-row={i === 0} onclick={() => openEditModal(p, 'purchase')}>
-                    <span class="detail-time">매입</span>
-                    <span class="detail-method">{p.supplier}</span>
-                    <span class="detail-memo">{p.memo || ''}</span>
-                    <span class="detail-amount font-mono text-negative">-{formatCurrency(p.amount)}</span>
-                    <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  </button>
-                {/each}
+                {#if typeFilter !== 'purchase'}
+                  {#each day.services as s}
+                    <button class="detail-row detail-row-btn" onclick={() => openEditModal(s)}>
+                      <span class="detail-time">{s.time || '--:--'}</span>
+                      <span class="detail-method">{s.paymentMethod}</span>
+                      <span class="detail-memo">{s.memo || ''}</span>
+                      <span class="detail-amount font-mono">{formatCurrency(s.amount)}</span>
+                      <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                  {/each}
+                {/if}
+                {#if typeFilter !== 'service'}
+                  {#each day.purchases as p, i}
+                    <button class="detail-row detail-row-btn" class:purchase-row={i === 0 && typeFilter === 'all' && day.services.length > 0} onclick={() => openEditModal(p, 'purchase')}>
+                      <span class="detail-time">매입</span>
+                      <span class="detail-method">{p.supplier}</span>
+                      <span class="detail-memo">{p.memo || ''}</span>
+                      <span class="detail-amount font-mono text-negative">-{formatCurrency(p.amount)}</span>
+                      <svg class="detail-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                  {/each}
+                {/if}
               </div>
             {/if}
           </li>
         {/each}
       </ul>
+      {/if}
     {/if}
 
     <!-- 하단 요약 -->
@@ -943,6 +1012,29 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .breakdown-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+  @media (min-width: 640px) {
+    .breakdown-row {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .breakdown-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .section-title {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--text-secondary);
   }
 
   .range-display {
