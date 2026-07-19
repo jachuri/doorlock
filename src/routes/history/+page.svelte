@@ -1088,7 +1088,7 @@
   .daily-left {
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: var(--space-1);
     flex: 1;
     min-width: 0;
   }
@@ -1107,23 +1107,34 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 1px;
+    gap: var(--space-1);
     flex-shrink: 0;
   }
 
+  /* 순수익이 한눈에 보는 결론 — 크고 굵게. 매출/매입은 그걸 뒷받침하는
+     작은 보조 지표 (달력 모드 색상 규칙: 매출=파랑/매입=회색/순수익=녹적) */
   .daily-sales {
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     font-weight: var(--weight-medium);
+    color: var(--accent-text);
+  }
+  .daily-sales.text-negative {
+    color: var(--negative);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+  }
+
+  .daily-purchase {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
   }
 
   .daily-profit {
     font-family: var(--font-mono);
-    font-size: var(--text-xs);
-  }
-
-  .daily-purchase {
-    display: none;
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
   }
 
   .positive { color: var(--positive); }
