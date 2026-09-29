@@ -8,6 +8,7 @@
   import TrendChart from '$lib/components/charts/TrendChart.svelte';
   import Sparkline from '$lib/components/charts/Sparkline.svelte';
   import ShareBars from '$lib/components/charts/ShareBars.svelte';
+  import Icon from '$lib/components/Icon.svelte';
 
   const PERIODS = [
     { key: 'today', label: '오늘' },
@@ -80,10 +81,45 @@
     return Math.round((parseYmd(b).getTime() - parseYmd(a).getTime()) / 86400000) + 1;
   }
 
-  // ─── 이전 기간(선택 기간과 같은 길이의 직전 구간) ───
+  // ─── 이전 기간 ───
+  // 주/월 프리셋은 캘린더상 대응 구간(지난주 같은 요일, 지난달 같은 날짜)과 비교하고,
+  // 오늘/직접선택은 선택 기간과 같은 길이의 직전 구간과 비교한다.
+  // (예: "이번 주"가 월~금이면 지난주 월~금과 비교해야지, 주말 낀 직전 5일과 비교하면 안 됨.
+  //  "이번 달" 31일 구간도 지난달 전체와 비교해야지, 직전 31일(월 경계가 하루 밀림)과 비교하면 안 됨.)
+
+  /**
+   * @param {string} ymd
+   * @param {number} months
+   */
+  function shiftMonthClamped(ymd, months) {
+    const d = parseYmd(ymd);
+    const day = d.getDate();
+    const targetFirst = new Date(d.getFullYear(), d.getMonth() + months, 1);
+    const lastDay = new Date(targetFirst.getFullYear(), targetFirst.getMonth() + 1, 0).getDate();
+    targetFirst.setDate(Math.min(day, lastDay));
+    return formatDate(targetFirst);
+  }
+
   let periodLength = $derived(startDate && endDate ? daysBetween(startDate, endDate) : 1);
-  let prevEnd = $derived(startDate ? shiftDate(startDate, -1) : '');
-  let prevStart = $derived(prevEnd ? shiftDate(prevEnd, -(periodLength - 1)) : '');
+  let prevStart = $derived.by(() => {
+    if (!startDate) return '';
+    if (selectedPeriod === 'week') return shiftDate(startDate, -7);
+    if (selectedPeriod === 'month' || selectedPeriod === 'lastMonth') return shiftMonthClamped(startDate, -1);
+    return shiftDate(startDate, -periodLength);
+  });
+  let prevEnd = $derived.by(() => {
+    if (!endDate) return '';
+    if (selectedPeriod === 'week') return shiftDate(endDate, -7);
+    if (selectedPeriod === 'month' || selectedPeriod === 'lastMonth') {
+      const d = parseYmd(endDate);
+      const isMonthEnd = d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      // 말일까지 꽉 찬 구간(지난 달 전체, 또는 오늘이 말일인 이번 달)은 지난달 말일이 정확히
+      // "이번 구간 시작일 하루 전"이므로 그걸 쓴다 — shiftMonthClamped는 6/30→5/30처럼
+      // 짧은 달에서 넘어올 때 진짜 말일(5/31)을 놓친다.
+      return isMonthEnd ? shiftDate(startDate, -1) : shiftMonthClamped(endDate, -1);
+    }
+    return shiftDate(startDate, -1);
+  });
 
   // 추이 그래프용 — 종료일 기준 24개월 전 1일부터 (표시는 최근 12개월까지로 상한)
   let trendStart = $derived.by(() => {
@@ -299,10 +335,10 @@
 
 <div class="page report-page">
   <header class="report-header">
-    <div>
-      <h1>대시보드</h1>
+    <div class="report-title">
+      <h1 class="page-title">대시보드</h1>
       <div class="period-filter">
-        <div class="chip-group">
+        <div class="chip-scroll" role="group" aria-label="기간">
           {#each PERIODS as p}
             <button class="chip" class:active={selectedPeriod === p.key} onclick={() => updateRange(p.key)}>
               {p.label}
@@ -311,9 +347,9 @@
         </div>
         {#if selectedPeriod === 'custom'}
           <div class="custom-range">
-            <input type="date" class="input-field input-sm" bind:value={startDate} />
+            <input type="date" class="input-field input-sm" bind:value={startDate} aria-label="시작일" />
             <span class="range-separator">~</span>
-            <input type="date" class="input-field input-sm" bind:value={endDate} />
+            <input type="date" class="input-field input-sm" bind:value={endDate} aria-label="종료일" />
           </div>
         {:else}
           <p class="range-display">{formatDateDisplay(startDate)} ~ {formatDateDisplay(endDate)}</p>
@@ -321,46 +357,54 @@
       </div>
     </div>
     <div class="report-actions">
-      <a href="/input" class="btn btn-ghost">매출 입력</a>
-      <a href="/purchase" class="btn btn-primary">매입 입력</a>
+      <a href="/purchase" class="btn btn-secondary"><Icon name="bag" size={18} /> 매입 입력</a>
+      <a href="/input" class="btn btn-primary"><Icon name="plus" size={18} stroke={2.4} /> 매출 입력</a>
     </div>
   </header>
 
   {#if loading}
-    <div class="loading"><div class="loading-dot"></div></div>
+    <div class="kpi-row kpi-row-3">
+      {#each [0, 1, 2] as _}<div class="skeleton" style="height: 132px"></div>{/each}
+    </div>
+    <div class="skeleton" style="height: 340px"></div>
   {:else}
-    <section class="kpi-section">
+    <section class="kpi-section" aria-label="핵심 지표">
       <div class="kpi-row kpi-row-3">
         <KpiCard label="매출" value={currentPeriod.sales} format="currency" deltaPercent={salesGrowth} deltaLabel="이전 기간 대비" />
-        <KpiCard label="순수익" value={currentPeriod.netProfit} format="currency" deltaPercent={profitGrowth} deltaLabel="이전 기간 대비" />
+        <KpiCard label="순수익" value={currentPeriod.netProfit} format="currency" tone="auto" deltaPercent={profitGrowth} deltaLabel="이전 기간 대비" />
         <KpiCard label="처리 건수" value={currentPeriod.count} format="count" deltaPercent={countGrowth} deltaLabel="이전 기간 대비" />
       </div>
-      <div class="kpi-row kpi-row-2">
-        <KpiCard label="판매마진" value={currentPeriod.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" deltaLabel="이전 기간 대비" />
-        <KpiCard label="운영마진" value={currentPeriod.margin} format="percent" deltaPercent={opMarginDelta} deltaUnit="%p" deltaLabel="이전 기간 대비" />
-      </div>
-      <div class="kpi-row kpi-row-2">
+      <div class="kpi-row kpi-row-4">
+        <KpiCard size="sm" label="판매마진" value={currentPeriod.salesMargin} format="percent" deltaPercent={salesMarginDelta} deltaUnit="%p" deltaLabel="이전 대비" />
+        <KpiCard size="sm" label="운영마진" value={currentPeriod.margin} format="percent" deltaPercent={opMarginDelta} deltaUnit="%p" deltaLabel="이전 대비" />
         <KpiCard
+          size="sm"
           label="ROAS"
           value={(currentPeriod.roas ?? 0) * 100}
           unavailable={currentPeriod.roas === null}
           format="percent"
           deltaPercent={roasGrowth}
-          deltaLabel="이전 기간 대비"
+          deltaLabel="이전 대비"
         />
-        <KpiCard label="광고비 비중" value={currentPeriod.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" deltaLabel="이전 기간 대비" />
+        <KpiCard size="sm" label="광고비 비중" value={currentPeriod.adSpendRatio} format="percent" deltaPercent={adSpendRatioDelta} deltaUnit="%p" deltaLabel="이전 대비" invertDelta />
       </div>
     </section>
 
     <section class="report-section card">
-      <h2 class="section-title">월별 성장 추이</h2>
+      <div class="report-section-head">
+        <h2 class="section-title">월별 성장 추이</h2>
+        <span class="section-hint">최근 {monthlyBuckets.length}개월</span>
+      </div>
       <TrendChart data={monthlyBuckets.map((b) => ({ label: b.label, sales: b.sales, netProfit: b.netProfit, adSpend: b.adSpend }))} />
     </section>
 
     <div class="report-row">
       <section class="report-section card">
-        <h2 class="section-title">일별 매출 추이</h2>
-        <Sparkline data={dailySales} />
+        <div class="report-section-head">
+          <h2 class="section-title">일별 매출 추이</h2>
+          <span class="section-hint">선택 기간</span>
+        </div>
+        <Sparkline data={dailySales} startDate={startDate} label="선택 기간 일별 매출 추이" height={140} />
       </section>
 
       <section class="report-section card">
@@ -379,7 +423,7 @@
         {#if supplierBreakdown.length === 0}
           <p class="empty-hint">매입 기록이 없습니다</p>
         {:else}
-          <ShareBars items={supplierBreakdown} />
+          <ShareBars items={supplierBreakdown} color="var(--chart-purchase)" />
         {/if}
       </section>
 
@@ -388,7 +432,7 @@
         {#if categoryBreakdown.length === 0}
           <p class="empty-hint">매입 기록이 없습니다</p>
         {:else}
-          <ShareBars items={categoryBreakdown} />
+          <ShareBars items={categoryBreakdown} color="var(--chart-purchase)" />
         {/if}
       </section>
     </div>
@@ -396,13 +440,6 @@
 </div>
 
 <style>
-  .report-page {
-    padding: var(--space-8);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-6);
-  }
-
   .report-header {
     display: flex;
     align-items: flex-end;
@@ -411,22 +448,21 @@
     flex-wrap: wrap;
   }
 
-  .report-header h1 {
-    font-size: var(--text-3xl);
-    font-weight: var(--weight-bold);
-    letter-spacing: -0.02em;
+  .report-title {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
   }
 
   .period-filter {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    margin-top: var(--space-3);
+    gap: var(--space-4);
     flex-wrap: wrap;
   }
 
   .range-display {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
   }
 
@@ -439,10 +475,6 @@
     color: var(--text-tertiary);
     font-size: var(--text-sm);
   }
-  .input-sm {
-    font-size: var(--text-sm);
-    padding: var(--space-2) var(--space-3);
-  }
 
   .report-actions {
     display: flex;
@@ -452,36 +484,39 @@
   .kpi-section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
   .kpi-row {
     display: grid;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
-  .kpi-row-3 {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .kpi-row-2 {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .kpi-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpi-row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
   .report-row {
     display: grid;
     grid-template-columns: 1.4fr 1fr;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
   .report-section {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
+    min-width: 0;
   }
 
-  .section-title {
-    font-size: var(--text-base);
-    font-weight: var(--weight-semibold);
-    color: var(--text-secondary);
+  .report-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .section-hint {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
   }
 
   .empty-hint {
@@ -489,28 +524,8 @@
     color: var(--text-tertiary);
   }
 
-  .loading {
-    display: flex;
-    justify-content: center;
-    padding: var(--space-12);
-  }
-
-  .loading-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-tertiary);
-    animation: pulse 1s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.8); }
-    50% { opacity: 1; transform: scale(1); }
-  }
-
   @media (max-width: 1240px) {
     .report-row { grid-template-columns: 1fr; }
+    .kpi-row-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-
-  input[type="date"] { color-scheme: dark; }
 </style>

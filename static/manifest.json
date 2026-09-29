@@ -4,8 +4,8 @@
   "description": "24시 출장 도어락 매입매출 관리",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#111113",
-  "theme_color": "#111113",
+  "background_color": "#0b1019",
+  "theme_color": "#0b1019",
   "orientation": "portrait",
   "icons": [
     {

@@ -1,7 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import { addPurchase, getSupplierList } from '$lib/db.js';
-  import { formatDate, formatAmountInput, parseAmount } from '$lib/utils.js';
+  import { formatDate, parseAmount } from '$lib/utils.js';
+  import { toast } from '$lib/ui.svelte.js';
+  import AmountInput from '$lib/components/AmountInput.svelte';
 
   let date = $state(formatDate());
   let supplier = $state('');
@@ -12,22 +14,17 @@
   let showSuggestions = $state(false);
   let filteredSuppliers = $derived(
     supplier.length > 0
-      ? supplierList.filter((s) => s.toLowerCase().includes(supplier.toLowerCase()))
+      ? supplierList.filter((s) => s.toLowerCase().includes(supplier.toLowerCase()) && s !== supplier)
       : []
   );
 
   let saving = $state(false);
-  let toast = $state({ show: false, message: '', type: 'success' });
 
   let amount = $derived(parseAmount(amountStr));
 
   onMount(async () => {
     supplierList = await getSupplierList();
   });
-
-  function onAmountInput(e) {
-    amountStr = formatAmountInput(e.target.value);
-  }
 
   /** @param {string} name */
   function selectSupplier(name) {
@@ -37,11 +34,13 @@
 
   async function handleSave() {
     if (!supplier.trim()) {
-      showToast('매입처를 입력해주세요', 'error');
+      toast.show('매입처를 입력해주세요', 'error');
+      document.getElementById('supplier')?.focus();
       return;
     }
     if (amount <= 0) {
-      showToast('금액을 입력해주세요', 'error');
+      toast.show('금액을 입력해주세요', 'error');
+      document.getElementById('amount')?.focus();
       return;
     }
 
@@ -54,11 +53,11 @@
         memo: memo.trim() || ''
       });
 
-      showToast('저장 완료', 'success');
+      toast.show(`${supplier.trim()} ${amount.toLocaleString('ko-KR')}원 저장 완료`, 'success');
       resetForm();
       supplierList = await getSupplierList();
     } catch {
-      showToast('저장에 실패했습니다', 'error');
+      toast.show('저장에 실패했습니다', 'error');
     } finally {
       saving = false;
     }
@@ -70,43 +69,25 @@
     amountStr = '';
     memo = '';
   }
-
-  /**
-   * @param {string} message
-   * @param {'success' | 'error'} type
-   */
-  function showToast(message, type = 'success') {
-    toast = { show: true, message, type };
-    setTimeout(() => {
-      toast = { ...toast, show: false };
-    }, 2000);
-  }
 </script>
 
 <svelte:head>
   <title>매입 입력 — 도어락 장부</title>
 </svelte:head>
 
-<div class="page">
+<div class="page form-page">
   <header class="page-header">
-    <h1>매입 입력</h1>
+    <h1 class="page-title">매입 입력</h1>
   </header>
 
   <form class="form" onsubmit={(e) => { e.preventDefault(); handleSave(); }}>
-    <!-- 날짜 -->
-    <div class="input-group">
-      <label for="date">날짜</label>
-      <input id="date" type="date" class="input-field" bind:value={date} />
-    </div>
-
-    <!-- 매입처 -->
-    <div class="input-group" style="position:relative">
+    <div class="input-group supplier-group">
       <label for="supplier">매입처</label>
       <input
         id="supplier"
         type="text"
         class="input-field"
-        placeholder="매입처를 입력하세요"
+        placeholder="매입처 이름"
         bind:value={supplier}
         onfocus={() => (showSuggestions = true)}
         onblur={() => setTimeout(() => (showSuggestions = false), 150)}
@@ -116,157 +97,74 @@
         <ul class="suggestions">
           {#each filteredSuppliers as s}
             <li>
-              <button type="button" class="suggestion-item" onmousedown={() => selectSupplier(s)}>
-                {s}
-              </button>
+              <button type="button" class="suggestion-item" onmousedown={() => selectSupplier(s)}>{s}</button>
             </li>
           {/each}
         </ul>
       {/if}
+      {#if supplierList.length > 0}
+        <div class="chip-scroll" aria-label="자주 쓰는 매입처">
+          {#each supplierList.slice(0, 12) as s}
+            <button type="button" class="chip" class:active={supplier === s} onclick={() => selectSupplier(s)}>{s}</button>
+          {/each}
+        </div>
+      {/if}
     </div>
 
-    <!-- 금액 -->
+    <AmountInput id="amount" label="금액" size="lg" bind:value={amountStr} quick={[10000, 50000, 100000]} />
+
     <div class="input-group">
-      <label for="amount">금액</label>
-      <div class="input-with-unit">
-        <input
-          id="amount"
-          type="text"
-          inputmode="numeric"
-          class="input-field input-amount"
-          placeholder="0"
-          value={amountStr}
-          oninput={onAmountInput}
-          autocomplete="off"
-        />
-        <span class="input-unit">원</span>
-      </div>
+      <label for="date">날짜</label>
+      <input id="date" type="date" class="input-field" bind:value={date} />
     </div>
 
-    <!-- 메모 -->
     <div class="input-group">
       <label for="memo">메모 <span class="label-optional">선택</span></label>
-      <input
-        id="memo"
-        type="text"
-        class="input-field"
-        placeholder="추가 정보"
-        bind:value={memo}
-        autocomplete="off"
-      />
+      <input id="memo" type="text" class="input-field" placeholder="품목, 수량 등" bind:value={memo} autocomplete="off" />
     </div>
 
-    <!-- 저장 -->
-    <button type="submit" class="btn btn-primary btn-lg btn-block save-btn" disabled={saving}>
-      {saving ? '저장 중...' : '저장'}
-    </button>
+    <div class="save-bar">
+      <button type="submit" class="btn btn-primary btn-lg btn-block" disabled={saving}>
+        {#if saving}
+          저장 중...
+        {:else if amount > 0}
+          <span class="num">{amount.toLocaleString('ko-KR')}원</span> 매입 저장
+        {:else}
+          저장
+        {/if}
+      </button>
+    </div>
   </form>
 </div>
 
-<!-- 토스트 -->
-<div class="toast" class:show={toast.show} class:success={toast.type === 'success'} class:error={toast.type === 'error'}>
-  {toast.message}
-</div>
-
 <style>
-  .page {
-    padding: var(--space-5);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-  }
-
-  .page-header h1 {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    letter-spacing: -0.02em;
-    padding-top: var(--space-2);
-  }
-
   .form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--space-6);
   }
 
-  .input-with-unit {
-    position: relative;
-  }
+  .supplier-group { position: relative; }
+  .supplier-group .chip-scroll { margin-top: var(--space-1); }
 
-  .input-unit {
-    position: absolute;
-    right: var(--space-4);
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: var(--text-sm);
-    color: var(--text-tertiary);
-    pointer-events: none;
-  }
-
-  .label-optional {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    font-weight: var(--weight-normal);
-  }
-
-  /* 자동완성 */
-  .suggestions {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    margin-top: var(--space-1);
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    list-style: none;
-    z-index: 10;
-    max-height: 160px;
-    overflow-y: auto;
-  }
-
-  .suggestion-item {
-    display: block;
-    width: 100%;
+  .save-bar {
+    position: sticky;
+    bottom: calc(var(--nav-height) + var(--safe-bottom));
+    margin: 0 calc(var(--space-4) * -1);
     padding: var(--space-3) var(--space-4);
-    background: none;
-    border: none;
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    text-align: left;
-    cursor: pointer;
-  }
-  .suggestion-item:hover {
-    background: var(--bg-hover);
+    background: linear-gradient(to top, var(--bg-base) 70%, transparent);
+    z-index: 5;
   }
 
-  .save-btn {
-    margin-top: var(--space-2);
-  }
-
-  .save-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  input[type="date"] { color-scheme: dark; }
-
-  /* ─── 데스크톱 ─── */
   @media (min-width: 1024px) {
-    .page-header {
-      max-width: 560px;
-      margin: 0 auto;
-      width: 100%;
+    .form-page {
+      max-width: 560px !important;
     }
-    .page-header h1 {
-      font-size: var(--text-2xl);
-    }
-    .form {
-      max-width: 560px;
-      margin: 0 auto;
-      width: 100%;
-      gap: var(--space-6);
+    .save-bar {
+      position: static;
+      margin: 0;
+      padding: 0;
+      background: none;
     }
   }
 </style>

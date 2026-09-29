@@ -1,7 +1,7 @@
 <script>
   import { tweened } from 'svelte/motion';
   import { cubicOut } from 'svelte/easing';
-  import { formatCurrency, formatNumber, formatPercent } from '$lib/utils.js';
+  import { formatNumber, formatPercent } from '$lib/utils.js';
 
   let {
     label,
@@ -11,6 +11,9 @@
     deltaPercent = null,
     deltaUnit = '%',
     deltaLabel = '전월 대비',
+    size = 'lg', // 'lg' | 'sm'
+    tone = 'none', // 'none' | 'auto'(부호에 따라 녹/적)
+    invertDelta = false, // 광고비 비중처럼 "증가 = 나쁨"인 지표
   } = $props();
 
   const display = tweened(0, { duration: 700, easing: cubicOut });
@@ -19,23 +22,30 @@
     display.set(unavailable ? 0 : value);
   });
 
-  /** @param {number} v */
-  function formatValue(v) {
-    if (format === 'percent') return formatPercent(v);
-    if (format === 'count') return `${formatNumber(Math.round(v))}건`;
-    if (format === 'ratio') return `${v.toFixed(1)}x`;
-    return formatCurrency(Math.round(v));
-  }
-
-  let deltaPositive = $derived((deltaPercent ?? 0) >= 0);
+  let deltaUp = $derived((deltaPercent ?? 0) >= 0);
+  let deltaGood = $derived(invertDelta ? !deltaUp : deltaUp);
+  let valueTone = $derived(tone === 'auto' ? (value < 0 ? 'negative' : 'positive') : '');
 </script>
 
-<div class="kpi-card">
+<div class="kpi-card size-{size}">
   <span class="kpi-label">{label}</span>
-  <span class="kpi-value">{unavailable ? '—' : formatValue($display)}</span>
+  <span class="kpi-value num {valueTone}">
+    {#if unavailable}
+      —
+    {:else if format === 'percent'}
+      {formatPercent($display)}
+    {:else if format === 'count'}
+      {formatNumber(Math.round($display))}<span class="won">건</span>
+    {:else if format === 'ratio'}
+      {$display.toFixed(1)}x
+    {:else}
+      {$display < 0 ? '-' : ''}{formatNumber(Math.abs(Math.round($display)))}<span class="won">원</span>
+    {/if}
+  </span>
   {#if !unavailable && deltaPercent !== null}
-    <span class="kpi-delta" class:positive={deltaPositive} class:negative={!deltaPositive}>
-      {deltaPositive ? '▲' : '▼'} {deltaLabel} {formatPercent(Math.abs(deltaPercent)).replace('%', '')}{deltaUnit}
+    <span class="kpi-delta" class:good={deltaGood} class:bad={!deltaGood}>
+      <span class="delta-chip">{deltaUp ? '▲' : '▼'} {formatPercent(Math.abs(deltaPercent)).replace('%', '')}{deltaUnit}</span>
+      <span class="delta-label">{deltaLabel}</span>
     </span>
   {/if}
 </div>
@@ -49,29 +59,45 @@
     background: var(--bg-raised);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    padding: var(--space-6);
+    padding: var(--space-5) var(--space-6);
   }
 
   .kpi-label {
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-weight: var(--weight-semibold);
+    color: var(--text-secondary);
   }
 
   .kpi-value {
-    font-family: var(--font-mono);
     font-size: var(--text-3xl);
+    font-weight: var(--weight-heavy);
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+  }
+
+  .size-sm {
+    padding: var(--space-4) var(--space-5);
+    gap: var(--space-1);
+  }
+  .size-sm .kpi-value {
+    font-size: var(--text-xl);
     font-weight: var(--weight-bold);
-    letter-spacing: -0.03em;
-    white-space: nowrap;
   }
 
   .kpi-delta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    flex-wrap: wrap;
   }
-  .kpi-delta.positive { color: var(--positive); }
-  .kpi-delta.negative { color: var(--negative); }
+  .delta-chip {
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-sm);
+    font-weight: var(--weight-bold);
+  }
+  .good .delta-chip { background: var(--positive-muted); color: var(--positive); }
+  .bad .delta-chip { background: var(--negative-muted); color: var(--negative); }
+  .delta-label { color: var(--text-tertiary); }
+  .size-sm .kpi-delta { font-size: var(--text-xs); }
 </style>

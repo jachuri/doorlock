@@ -1,7 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '$lib/db.js';
-  import { formatCurrency } from '$lib/utils.js';
+  import { toast, confirmDialog } from '$lib/ui.svelte.js';
+  import Icon from '$lib/components/Icon.svelte';
+  import Money from '$lib/components/Money.svelte';
 
   const CATEGORIES = ['광고', '재고', '비품', '기타'];
 
@@ -16,8 +18,6 @@
   let newCategory = $state('기타');
   let adding = $state(false);
 
-  let toast = $state({ show: false, message: '', type: 'success' });
-
   onMount(loadData);
 
   async function loadData() {
@@ -27,7 +27,7 @@
       suppliers = result;
     } else {
       suppliers = [];
-      showToast(result?.message || '매입처 목록을 불러오지 못했습니다', 'error');
+      toast.show(result?.message || '매입처 목록을 불러오지 못했습니다', 'error');
     }
     loading = false;
   }
@@ -43,23 +43,14 @@
   });
 
   /**
-   * @param {string} message
-   * @param {'success' | 'error'} type
-   */
-  function showToast(message, type = 'success') {
-    toast = { show: true, message, type };
-    setTimeout(() => { toast = { ...toast, show: false }; }, 2500);
-  }
-
-  /**
    * @param {{ id: number, name: string, category: string }} supplier
    * @param {string} category
    */
   async function changeCategory(supplier, category) {
     const result = await updateSupplier(supplier.id, { name: supplier.name, category });
-    if (!result.success) { showToast(result.message || '변경 실패', 'error'); return; }
+    if (!result.success) { toast.show(result.message || '변경 실패', 'error'); return; }
     await loadData();
-    showToast('카테고리 변경 완료');
+    toast.show('카테고리 변경 완료');
   }
 
   /** @param {{ id: number, name: string }} supplier */
@@ -76,14 +67,14 @@
   /** @param {{ id: number, name: string, category: string }} supplier */
   async function saveEdit(supplier) {
     const trimmed = editingName.trim();
-    if (!trimmed) { showToast('이름을 입력해주세요', 'error'); return; }
+    if (!trimmed) { toast.show('이름을 입력해주세요', 'error'); return; }
     if (trimmed === supplier.name) { cancelEdit(); return; }
 
     const result = await updateSupplier(supplier.id, { name: trimmed, category: supplier.category });
-    if (!result.success) { showToast(result.message || '수정 실패', 'error'); return; }
+    if (!result.success) { toast.show(result.message || '수정 실패', 'error'); return; }
     cancelEdit();
     await loadData();
-    showToast(result.merged ? `"${trimmed}"로 병합되었습니다` : '수정 완료');
+    toast.show(result.merged ? `"${trimmed}"로 병합되었습니다` : '수정 완료');
   }
 
   /** @param {SubmitEvent} e */
@@ -96,20 +87,26 @@
     const result = await addSupplier({ name: trimmed, category: newCategory });
     adding = false;
 
-    if (!result.success) { showToast(result.message || '추가 실패', 'error'); return; }
+    if (!result.success) { toast.show(result.message || '추가 실패', 'error'); return; }
     newName = '';
     newCategory = '기타';
     await loadData();
-    showToast('매입처 추가 완료');
+    toast.show('매입처 추가 완료');
   }
 
   /** @param {{ id: number, name: string }} supplier */
   async function handleDelete(supplier) {
-    if (!confirm(`"${supplier.name}"을(를) 삭제하시겠습니까?`)) return;
+    const ok = await confirmDialog.ask({
+      title: '매입처 삭제',
+      message: `"${supplier.name}"을(를) 삭제할까요?`,
+      confirmLabel: '삭제',
+      danger: true,
+    });
+    if (!ok) return;
     const result = await deleteSupplier(supplier.id);
-    if (!result.success) { showToast(result.message || '삭제 실패', 'error'); return; }
+    if (!result.success) { toast.show(result.message || '삭제 실패', 'error'); return; }
     await loadData();
-    showToast('삭제 완료');
+    toast.show('삭제 완료');
   }
 </script>
 
@@ -119,35 +116,47 @@
 
 <div class="page suppliers-page">
   <header class="suppliers-header">
-    <h1>매입처 관리</h1>
-    <span class="header-sub">이름 오타 교정(병합)과 카테고리 분류 — 모바일 입력에는 영향 없음</span>
+    <a href="/settings" class="btn-icon back-btn" aria-label="설정으로">
+      <Icon name="chevron-left" size={24} />
+    </a>
+    <div>
+      <h1 class="page-title">매입처 관리</h1>
+      <p class="page-subtitle">이름을 누르면 수정 · 같은 이름은 병합</p>
+    </div>
   </header>
 
   <form class="add-form card" onsubmit={handleAdd}>
-    <input type="text" class="input-field" placeholder="새 매입처 이름" bind:value={newName} />
-    <select class="input-field" bind:value={newCategory}>
+    <input type="text" class="input-field" placeholder="새 매입처 이름" bind:value={newName} aria-label="새 매입처 이름" />
+    <select class="input-field add-category" bind:value={newCategory} aria-label="카테고리">
       {#each CATEGORIES as c}
         <option value={c}>{c}</option>
       {/each}
     </select>
-    <button type="submit" class="btn btn-primary" disabled={adding || !newName.trim()}>+ 추가</button>
+    <button type="submit" class="btn btn-primary add-btn" disabled={adding || !newName.trim()}>
+      <Icon name="plus" size={18} stroke={2.4} /> 추가
+    </button>
   </form>
 
-  <div class="chip-group">
+  <div class="chip-scroll" role="group" aria-label="카테고리 필터">
     <button type="button" class="chip" class:active={categoryFilter === 'all'} onclick={() => (categoryFilter = 'all')}>
-      전체 · {suppliers.length}
+      전체 <span class="chip-count">{suppliers.length}</span>
     </button>
     {#each CATEGORIES as c}
       <button type="button" class="chip" class:active={categoryFilter === c} onclick={() => (categoryFilter = c)}>
-        {c} · {categoryCounts.get(c) || 0}
+        {c} <span class="chip-count">{categoryCounts.get(c) || 0}</span>
       </button>
     {/each}
   </div>
 
   {#if loading}
-    <div class="loading"><div class="loading-dot"></div></div>
+    <div class="supplier-list">
+      {#each [0, 1, 2, 3, 4] as _}
+        <div class="skeleton" style="height: 72px"></div>
+      {/each}
+    </div>
   {:else if filteredSuppliers.length === 0}
-    <div class="empty-state">
+    <div class="empty-state card">
+      <span class="empty-icon"><Icon name="tag" size={26} /></span>
       <p>매입처가 없습니다</p>
     </div>
   {:else}
@@ -158,22 +167,30 @@
             {#if editingId === supplier.id}
               <input
                 type="text"
-                class="input-field"
+                class="input-field input-sm"
                 bind:value={editingName}
+                aria-label="매입처 이름"
                 onkeydown={(e) => { if (e.key === 'Enter') saveEdit(supplier); if (e.key === 'Escape') cancelEdit(); }}
               />
-              <button type="button" class="btn btn-ghost btn-sm" onclick={() => saveEdit(supplier)}>저장</button>
+              <button type="button" class="btn btn-primary btn-sm" onclick={() => saveEdit(supplier)}>저장</button>
               <button type="button" class="btn btn-ghost btn-sm" onclick={cancelEdit}>취소</button>
             {:else}
               <button type="button" class="supplier-name" onclick={() => startEdit(supplier)}>
-                {supplier.name}
+                <span>{supplier.name}</span>
+                <Icon name="edit" size={14} class="name-edit-icon" />
               </button>
             {/if}
           </div>
 
+          <div class="supplier-stats">
+            <span class="stat-count">{supplier.purchaseCount}건</span>
+            <Money value={supplier.purchaseTotal} class="stat-total" />
+          </div>
+
           <select
-            class="input-field category-select"
+            class="input-field input-sm category-select"
             value={supplier.category}
+            aria-label="{supplier.name} 카테고리"
             onchange={(e) => changeCategory(supplier, /** @type {HTMLSelectElement} */ (e.target).value)}
           >
             {#each CATEGORIES as c}
@@ -181,54 +198,42 @@
             {/each}
           </select>
 
-          <div class="supplier-stats">
-            <span>{supplier.purchaseCount}건</span>
-            <span class="font-mono">{formatCurrency(supplier.purchaseTotal)}</span>
+          <div class="delete-cell">
+            {#if supplier.purchaseCount === 0}
+              <button type="button" class="btn-icon delete-btn" onclick={() => handleDelete(supplier)} aria-label="{supplier.name} 삭제">
+                <Icon name="trash" size={18} />
+              </button>
+            {/if}
           </div>
-
-          {#if supplier.purchaseCount === 0}
-            <button type="button" class="delete-btn" onclick={() => handleDelete(supplier)} aria-label="삭제">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          {:else}
-            <span></span>
-          {/if}
         </li>
       {/each}
     </ul>
   {/if}
 </div>
 
-<div class="toast" class:show={toast.show} class:success={toast.type === 'success'} class:error={toast.type === 'error'}>
-  {toast.message}
-</div>
-
 <style>
-  .suppliers-page {
-    padding: var(--space-6);
+  .suppliers-page { gap: var(--space-4); }
+
+  .suppliers-header {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-  }
-
-  .suppliers-header h1 {
-    font-size: var(--text-2xl);
-    font-weight: var(--weight-bold);
-    letter-spacing: -0.02em;
-  }
-
-  .header-sub {
-    font-size: var(--text-sm);
-    color: var(--text-tertiary);
+    align-items: flex-start;
+    gap: var(--space-1);
+    margin-left: calc(var(--space-3) * -1);
   }
 
   .add-form {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    gap: var(--space-2);
+    padding: var(--space-3);
   }
-  .add-form input[type='text'] { flex: 1; }
-  .add-form select { width: 140px; }
+  .add-form input { grid-column: 1 / -1; }
+  .add-btn { gap: var(--space-1); }
+
+  .chip-count {
+    font-size: var(--text-xs);
+    opacity: 0.75;
+  }
 
   .supplier-list {
     list-style: none;
@@ -237,15 +242,20 @@
     gap: var(--space-2);
   }
 
+  /* 모바일: 이름+금액 한 줄, 카테고리+삭제 두 번째 줄 */
   .supplier-row {
     display: grid;
-    grid-template-columns: 1fr 140px 200px 32px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name stats'
+      'cat del';
     align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-5);
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
   }
 
   .supplier-name-cell {
+    grid-area: name;
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -253,77 +263,85 @@
   }
   .supplier-name-cell input { flex: 1; }
 
-  .btn-sm {
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-xs);
-  }
-
   .supplier-name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    min-height: 40px;
+    padding: 0 var(--space-2);
+    margin-left: calc(var(--space-2) * -1);
     background: none;
     border: none;
+    border-radius: var(--radius-sm);
     color: var(--text-primary);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
     text-align: left;
     cursor: pointer;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
+  }
+  .supplier-name span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .supplier-name:hover { background: var(--bg-hover); }
+  .supplier-name :global(.name-edit-icon) {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+  }
 
   .supplier-stats {
+    grid-area: stats;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .stat-count {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+  .supplier-stats :global(.stat-total) {
+    font-size: var(--text-base);
+    font-weight: var(--weight-bold);
+  }
+
+  .category-select {
+    grid-area: cat;
+    width: 120px;
+  }
+
+  .delete-cell {
+    grid-area: del;
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
   }
+  .delete-btn { color: var(--text-tertiary); }
+  .delete-btn:hover { background: var(--negative-muted) !important; color: var(--negative) !important; }
 
-  .delete-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-tertiary);
-    cursor: pointer;
-  }
-  .delete-btn:hover { background: var(--negative-muted); color: var(--negative); }
-
-  .loading {
-    display: flex;
-    justify-content: center;
-    padding: var(--space-12);
-  }
-  .loading-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-tertiary);
-    animation: pulse 1s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.8); }
-    50% { opacity: 1; transform: scale(1); }
-  }
-
-  /* ─── 데스크톱 ─── */
-  @media (min-width: 1024px) {
-    .suppliers-header h1 {
-      font-size: var(--text-2xl);
+  @media (min-width: 768px) {
+    .add-form {
+      grid-template-columns: minmax(0, 1fr) 140px auto;
     }
+    .add-form input { grid-column: auto; }
+
     .supplier-row {
-      padding: var(--space-4) var(--space-6);
+      grid-template-columns: minmax(0, 1fr) 140px 200px 44px;
+      grid-template-areas: 'name cat stats del';
+      padding: var(--space-3) var(--space-5);
     }
-    .supplier-name,
+    .category-select { width: 100%; }
     .supplier-stats {
-      font-size: var(--text-base);
+      flex-direction: row;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: var(--space-3);
     }
+    .stat-count { font-size: var(--text-sm); }
+  }
+
+  @media (min-width: 1024px) {
+    .suppliers-header { margin-left: 0; }
+    .back-btn { display: none; }
   }
 </style>

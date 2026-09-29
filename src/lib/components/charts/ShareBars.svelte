@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { formatCurrency, formatPercent } from '$lib/utils.js';
 
-  let { items = [] } = $props();
+  let { items = [], color = 'var(--accent)' } = $props();
 
   let total = $derived(items.reduce((s, i) => s + i.value, 0) || 1);
   let maxVal = $derived(Math.max(1, ...items.map((i) => i.value)));
@@ -18,10 +18,10 @@
     <div class="share-row">
       <div class="share-head">
         <span class="share-label">{item.label}</span>
-        <span class="share-value">{formatCurrency(item.value)} · {formatPercent((item.value / total) * 100)}</span>
+        <span class="share-value">{formatCurrency(item.value)}<span class="share-pct">{formatPercent((item.value / total) * 100)}</span></span>
       </div>
       <div class="share-track">
-        <div class="share-fill" style:width={mounted ? `${(item.value / maxVal) * 100}%` : '0%'}></div>
+        <div class="share-fill" style:background={color} style:width={mounted ? `${(item.value / maxVal) * 100}%` : '0%'}></div>
       </div>
     </div>
   {/each}
@@ -50,12 +50,25 @@
   .share-label {
     color: var(--text-secondary);
     font-weight: var(--weight-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .share-value {
-    font-family: var(--font-mono);
     color: var(--text-primary);
+    font-weight: var(--weight-semibold);
     white-space: nowrap;
+  }
+
+  .share-pct {
+    display: inline-block;
+    min-width: 3.6em;
+    margin-left: var(--space-2);
+    text-align: right;
+    color: var(--text-tertiary);
+    font-weight: var(--weight-medium);
   }
 
   .share-track {

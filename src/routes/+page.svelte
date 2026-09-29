@@ -1,9 +1,11 @@
 <script>
   import { afterNavigate } from '$app/navigation';
   import { getServicesByDate, getServicesByDateRange, getPurchasesByDateRange } from '$lib/db.js';
-  import { formatDate, formatDateDisplay, formatCurrency, formatPercent, formatMonth } from '$lib/utils.js';
+  import { formatDate, formatDateDisplay, formatPercent, formatMonth } from '$lib/utils.js';
   import { viewport } from '$lib/viewport.svelte.js';
   import DesktopDashboard from '$lib/components/DesktopDashboard.svelte';
+  import Icon from '$lib/components/Icon.svelte';
+  import Money from '$lib/components/Money.svelte';
 
   let today = formatDate();
   let selectedDate = $state(today);
@@ -16,11 +18,15 @@
   // 월별 데이터
   let monthlyServices = $state([]);
   let monthlyPurchases = $state([]);
+  // 전월 동기간 매출 (이번 달 진행 중일 때 비교용)
+  let prevMonthSales = $state(/** @type {number | null} */ (null));
 
   // 최근 기록
   let recentServices = $state([]);
 
   let loading = $state(true);
+  let dailyLoading = $state(false);
+  let monthlyLoading = $state(false);
 
   // 일별 집계
   let dailyTotalSales = $derived(dailyServices.reduce((s, r) => s + r.amount, 0));
@@ -36,6 +42,14 @@
   let monthlyNetProfit = $derived(monthlyTotalSales - monthlyTotalParts - monthlyTotalPurchase);
   let monthlyMargin = $derived(monthlyTotalSales > 0 ? (monthlyNetProfit / monthlyTotalSales) * 100 : 0);
   let monthlyCount = $derived(monthlyServices.length);
+  let monthlySalesGrowth = $derived(
+    prevMonthSales ? ((monthlyTotalSales - prevMonthSales) / prevMonthSales) * 100 : null
+  );
+
+  let isToday = $derived(selectedDate === today);
+  let isCurrentMonth = $derived(
+    currentMonth.year === new Date().getFullYear() && currentMonth.month === new Date().getMonth() + 1
+  );
 
   afterNavigate(() => {
     // 데스크톱은 DesktopDashboard가 자체적으로 데이터를 불러오므로 여기서는 생략
@@ -49,19 +63,41 @@
   }
 
   async function loadDaily() {
-    dailyServices = await getServicesByDate(selectedDate);
-    const dayPurchases = await getPurchasesByDateRange(selectedDate, selectedDate);
-    dailyPurchases = dayPurchases;
+    dailyLoading = true;
+    const [s, p] = await Promise.all([
+      getServicesByDate(selectedDate),
+      getPurchasesByDateRange(selectedDate, selectedDate),
+    ]);
+    dailyServices = s;
+    dailyPurchases = p;
+    dailyLoading = false;
   }
 
   async function loadMonthly() {
+    monthlyLoading = true;
     const y = currentMonth.year;
     const m = currentMonth.month;
     const start = `${y}-${String(m).padStart(2, '0')}-01`;
     const lastDay = new Date(y, m, 0).getDate();
     const end = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    monthlyServices = await getServicesByDateRange(start, end);
-    monthlyPurchases = await getPurchasesByDateRange(start, end);
+
+    // 진행 중인 달은 전월 같은 날짜까지, 지난 달은 전월 전체와 비교
+    const now = new Date();
+    const inProgress = y === now.getFullYear() && m === now.getMonth() + 1;
+    const prevLast = new Date(y, m - 1, 0);
+    const prevEndDay = inProgress ? Math.min(now.getDate(), prevLast.getDate()) : prevLast.getDate();
+    const prevStart = formatDate(new Date(prevLast.getFullYear(), prevLast.getMonth(), 1));
+    const prevEnd = formatDate(new Date(prevLast.getFullYear(), prevLast.getMonth(), prevEndDay));
+
+    const [s, p, prev] = await Promise.all([
+      getServicesByDateRange(start, end),
+      getPurchasesByDateRange(start, end),
+      getServicesByDateRange(prevStart, prevEnd),
+    ]);
+    monthlyServices = s;
+    monthlyPurchases = p;
+    prevMonthSales = prev.reduce((/** @type {number} */ sum, /** @type {{ amount: number }} */ r) => sum + r.amount, 0);
+    monthlyLoading = false;
   }
 
   async function loadRecent() {
@@ -112,6 +148,15 @@
       loadMonthly();
     }
   }
+
+  /** @param {string} dateStr */
+  function relativeDay(dateStr) {
+    if (dateStr === today) return '오늘';
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    if (dateStr === formatDate(y)) return '어제';
+    return formatDateDisplay(dateStr);
+  }
 </script>
 
 <svelte:head>
@@ -123,122 +168,137 @@
 {:else}
 <div class="page">
   <header class="page-header">
-    <h1>도어락 장부</h1>
-    <span class="header-date">{formatDateDisplay(today)}</span>
+    <div>
+      <p class="eyebrow">{formatDateDisplay(today)}</p>
+      <h1 class="page-title">도어락 장부</h1>
+    </div>
   </header>
 
   {#if loading}
-    <div class="loading">
-      <div class="loading-dot"></div>
-    </div>
+    <div class="skeleton" style="height: 214px"></div>
+    <div class="skeleton" style="height: 196px"></div>
+    <div class="skeleton" style="height: 260px"></div>
   {:else}
-    <!-- 일별 요약 -->
-    <section class="section" aria-label="일별 요약">
-      <div class="section-title-row">
-        <h2 class="section-title">일별 요약</h2>
-        <div class="date-nav">
-          <button class="btn-icon" onclick={prevDay} aria-label="전일">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <span class="date-label">{formatDateDisplay(selectedDate)}</span>
-          <button class="btn-icon" onclick={nextDay} aria-label="익일">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
+    <!-- 일별 요약: 순수익이 결론, 매출·지출·건수는 근거 -->
+    <section class="hero card" aria-label="일별 요약" class:dim={dailyLoading}>
+      <div class="card-head">
+        <button class="btn-icon" onclick={prevDay} aria-label="전날">
+          <Icon name="chevron-left" size={22} />
+        </button>
+        <div class="card-head-label">
+          <span class="head-date">{formatDateDisplay(selectedDate)}</span>
+          {#if isToday}<span class="today-pill">오늘</span>{/if}
         </div>
+        <button class="btn-icon" onclick={nextDay} aria-label="다음날" disabled={isToday}>
+          <Icon name="chevron-right" size={22} />
+        </button>
       </div>
 
-      <div class="metrics-grid">
-        <div class="card metric">
-          <span class="metric-label">매출</span>
-          <span class="metric-value">{formatCurrency(dailyTotalSales)}</span>
-        </div>
-        <div class="card metric">
-          <span class="metric-label">건수</span>
-          <span class="metric-value">{dailyCount}건</span>
-        </div>
-        <div class="card metric">
-          <span class="metric-label">매입+부품비</span>
-          <span class="metric-value">{formatCurrency(dailyTotalPurchase + dailyTotalParts)}</span>
-        </div>
-        <div class="card metric">
-          <span class="metric-label">순수익</span>
-          <span class="metric-value" class:positive={dailyNetProfit >= 0} class:negative={dailyNetProfit < 0}>
-            {formatCurrency(dailyNetProfit)}
-          </span>
-        </div>
+      <div class="hero-main">
+        <span class="metric-label">순수익</span>
+        <Money value={dailyNetProfit} tone="auto" class="hero-value" />
       </div>
+
+      <dl class="stat-row">
+        <div class="stat">
+          <dt>매출</dt>
+          <dd><Money value={dailyTotalSales} tone="sales" /></dd>
+        </div>
+        <div class="stat">
+          <dt>매입+부품비</dt>
+          <dd><Money value={dailyTotalPurchase + dailyTotalParts} tone="muted" /></dd>
+        </div>
+        <div class="stat stat-count">
+          <dt>건수</dt>
+          <dd><span class="num">{dailyCount}</span><span class="won">건</span></dd>
+        </div>
+      </dl>
     </section>
 
     <!-- 월간 요약 -->
-    <section class="section" aria-label="월간 요약">
-      <div class="section-title-row">
-        <h2 class="section-title">월간 요약</h2>
-        <div class="date-nav">
-          <button class="btn-icon" onclick={prevMonth} aria-label="전월">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <span class="date-label">{formatMonth(currentMonth.year, currentMonth.month)}</span>
-          <button class="btn-icon" onclick={nextMonth} aria-label="익월">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
+    <section class="card month" aria-label="월간 요약" class:dim={monthlyLoading}>
+      <div class="card-head">
+        <button class="btn-icon" onclick={prevMonth} aria-label="전월">
+          <Icon name="chevron-left" size={22} />
+        </button>
+        <div class="card-head-label">
+          <span class="head-date">{formatMonth(currentMonth.year, currentMonth.month)}</span>
+        </div>
+        <button class="btn-icon" onclick={nextMonth} aria-label="익월" disabled={isCurrentMonth}>
+          <Icon name="chevron-right" size={22} />
+        </button>
+      </div>
+
+      <div class="month-main">
+        <div>
+          <span class="metric-label">월 순수익</span>
+          <Money value={monthlyNetProfit} tone="auto" class="month-value" />
+        </div>
+        <div class="margin-badge" class:negative={monthlyMargin < 0}>
+          <span class="metric-label">마진</span>
+          <span class="num margin-value">{formatPercent(monthlyMargin)}</span>
         </div>
       </div>
 
-      <div class="metrics-row">
-        <div class="metric-inline">
-          <span class="metric-label">매출</span>
-          <span class="metric-value-sm">{formatCurrency(monthlyTotalSales)}</span>
+      <dl class="stat-row">
+        <div class="stat">
+          <dt>매출</dt>
+          <dd><Money value={monthlyTotalSales} tone="sales" /></dd>
         </div>
-        <div class="metric-inline">
-          <span class="metric-label">건수</span>
-          <span class="metric-value-sm">{monthlyCount}건</span>
+        <div class="stat">
+          <dt>지출</dt>
+          <dd><Money value={monthlyTotalPurchase + monthlyTotalParts} tone="muted" /></dd>
         </div>
-        <div class="metric-inline">
-          <span class="metric-label">순수익</span>
-          <span class="metric-value-sm" class:positive={monthlyNetProfit >= 0} class:negative={monthlyNetProfit < 0}>
-            {formatCurrency(monthlyNetProfit)}
+        <div class="stat stat-count">
+          <dt>건수</dt>
+          <dd><span class="num">{monthlyCount}</span><span class="won">건</span></dd>
+        </div>
+      </dl>
+
+      {#if monthlySalesGrowth !== null}
+        <p class="growth" class:up={monthlySalesGrowth >= 0} class:down={monthlySalesGrowth < 0}>
+          <Icon name={monthlySalesGrowth >= 0 ? 'arrow-up' : 'arrow-down'} size={14} stroke={2.4} />
+          <span>
+            {isCurrentMonth ? '지난달 같은 기간' : '지난달'} 대비 매출
+            <strong class="num">{formatPercent(Math.abs(monthlySalesGrowth))}</strong>
+            {monthlySalesGrowth >= 0 ? '증가' : '감소'}
           </span>
-        </div>
-        <div class="metric-inline">
-          <span class="metric-label">마진</span>
-          <span class="metric-value-sm">{formatPercent(monthlyMargin)}</span>
-        </div>
-      </div>
+        </p>
+      {/if}
     </section>
 
     <!-- 최근 기록 -->
-    <section class="section" aria-label="최근 기록">
-      <div class="section-title-row">
-        <h2 class="section-title">최근 기록</h2>
+    <section class="section" aria-label="최근 매출">
+      <div class="section-head">
+        <h2 class="section-title">최근 매출</h2>
         {#if recentServices.length > 0}
-          <a href="/history" class="link-more">전체보기 · 수정/삭제</a>
+          <a href="/history" class="btn btn-ghost btn-sm link-more">
+            전체보기 <Icon name="chevron-right" size={16} />
+          </a>
         {/if}
       </div>
 
       {#if recentServices.length === 0}
-        <div class="empty-state">
-          <p>아직 기록이 없습니다</p>
+        <div class="empty-state card">
+          <span class="empty-icon"><Icon name="receipt" size={26} /></span>
+          <p>최근 7일간 매출 기록이 없습니다</p>
           <a href="/input" class="btn btn-primary">첫 매출 입력하기</a>
         </div>
       {:else}
-        <ul class="record-list">
+        <ul class="record-list card">
           {#each recentServices as service}
             <li class="record-item">
               <div class="record-left">
-                <span class="record-date">{formatDateDisplay(service.date)}</span>
+                <span class="record-title">
+                  {relativeDay(service.date)}
+                  <span class="record-time num">{service.time || ''}</span>
+                </span>
                 <span class="record-meta">
-                  {service.time || ''} · {service.paymentMethod}
-                  {#if service.memo}
-                    · {service.memo}
-                  {/if}
+                  <span class="pay">{service.paymentMethod}</span>
+                  {#if service.memo}<span class="memo">· {service.memo}</span>{/if}
                 </span>
               </div>
-              <div class="record-right">
-                <span class="record-amount">{formatCurrency(service.amount)}</span>
-                {#if service.partsCost > 0}
-                  <span class="record-parts">-{formatCurrency(service.partsCost)}</span>
-                {/if}
-              </div>
+              <Money value={service.amount} class="record-amount" />
             </li>
           {/each}
         </ul>
@@ -249,142 +309,145 @@
 {/if}
 
 <style>
-  .page {
-    padding: var(--space-5);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-6);
-  }
+  .dim { opacity: 0.55; transition: opacity var(--duration-fast); }
 
-  .page-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    padding-top: var(--space-2);
-  }
-
-  .page-header h1 {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    letter-spacing: -0.02em;
-  }
-
-  .header-date {
-    font-size: var(--text-sm);
-    color: var(--text-tertiary);
-  }
-
-  .section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-
-  .section-title-row {
+  .card-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    margin: calc(var(--space-3) * -1) calc(var(--space-3) * -1) 0;
   }
 
-  .section-title {
+  .card-head-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .head-date {
     font-size: var(--text-base);
     font-weight: var(--weight-semibold);
-    color: var(--text-secondary);
-    letter-spacing: -0.01em;
   }
 
-  .date-nav {
+  .today-pill {
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--brand-muted);
+    color: var(--brand-text);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+  }
+
+  .hero-main,
+  .month-main {
     display: flex;
-    align-items: center;
-    gap: var(--space-1);
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-3) 0 var(--space-4);
   }
 
-  .date-label {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    color: var(--text-primary);
-    min-width: 100px;
-    text-align: center;
-  }
-
-  .btn-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-out);
-  }
-  .btn-icon:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .metrics-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .month-main {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
     gap: var(--space-3);
   }
-
-  .metrics-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-2);
-    background: var(--bg-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: var(--space-4);
-  }
-
-  .metric-inline {
+  .month-main > div:first-child {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    text-align: center;
+    gap: 2px;
+    min-width: 0;
   }
 
-  .metric-value-sm {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
-    letter-spacing: -0.02em;
+  .hero-main :global(.hero-value) {
+    font-size: 2.375rem;
+    font-weight: var(--weight-heavy);
+    letter-spacing: -0.035em;
+    line-height: 1.15;
   }
 
-  .positive { color: var(--positive); }
-  .negative { color: var(--negative); }
+  .month-main :global(.month-value) {
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-heavy);
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+  }
 
-  .link-more {
+  .margin-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .margin-value {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+  }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 0.7fr);
+    gap: var(--space-2);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .stat dt {
     font-size: var(--text-xs);
-    color: var(--accent-text);
-    text-decoration: none;
+    color: var(--text-tertiary);
     font-weight: var(--weight-medium);
   }
-  .link-more:hover {
-    text-decoration: underline;
+  .stat dd {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .stat-count { text-align: right; }
+
+  .growth {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+  }
+  .growth.up :global(svg), .growth.up strong { color: var(--positive); }
+  .growth.down :global(svg), .growth.down strong { color: var(--negative); }
+
+  .link-more {
+    gap: 2px;
+    padding-right: var(--space-2);
+    color: var(--accent-text);
   }
 
-  /* 기록 리스트 */
+  /* 최근 기록 */
   .record-list {
     list-style: none;
-    display: flex;
-    flex-direction: column;
+    padding: 0 var(--space-4);
   }
 
   .record-item {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    padding: var(--space-4) 0;
+    gap: var(--space-3);
+    min-height: 64px;
+    padding: var(--space-3) 0;
     border-bottom: 1px solid var(--border-subtle);
   }
-  .record-item:last-child {
-    border-bottom: none;
-  }
+  .record-item:last-child { border-bottom: none; }
 
   .record-left {
     display: flex;
@@ -394,57 +457,34 @@
     flex: 1;
   }
 
-  .record-date {
+  .record-title {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+  }
+  .record-time {
+    margin-left: var(--space-1);
     font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+    font-weight: var(--weight-normal);
+    color: var(--text-tertiary);
   }
 
   .record-meta {
-    font-size: var(--text-xs);
+    display: flex;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
     color: var(--text-tertiary);
+    min-width: 0;
+  }
+  .record-meta .pay { flex-shrink: 0; }
+  .record-meta .memo {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .record-right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 1px;
+  .record-list :global(.record-amount) {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
     flex-shrink: 0;
-  }
-
-  .record-amount {
-    font-family: var(--font-mono);
-    font-size: var(--text-base);
-    font-weight: var(--weight-semibold);
-    letter-spacing: -0.02em;
-  }
-
-  .record-parts {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-  }
-
-  /* 로딩 */
-  .loading {
-    display: flex;
-    justify-content: center;
-    padding: var(--space-12);
-  }
-
-  .loading-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-tertiary);
-    animation: pulse 1s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.8); }
-    50% { opacity: 1; transform: scale(1); }
   }
 </style>
